@@ -1,0 +1,439 @@
+---
+title: "Andean condor as predator"
+author: "Juan Sebastián Restrepo, Orlando Acevedo-Charry, ..., & Vanessa Hull"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output:
+  bookdown::html_document2:
+    toc: yes
+    toc_float: true
+    number_sections: yes
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Read me
+
+This paper aims to understand human-vulture interactions regarding the role of the Andean Condor (\textit{Vultur gryphus}) as a potential predator. The specific objectives were: 
+\item study local perceptions of the negative impacts of condors on livelihoods and the responses to conflicts, the perceived benefits provided by condors, and analyze how these perceptions relate to socio-demographic and psychological factors, and livestock management practices. 
+\item quantify the extent of potential Andean condor predation on livestock, and 
+\item assess whether field observations support the reported perceptions of condor-related damage (compare percetions and reality) 
+
+In addition, we also explored how people's perceptions of the costs and benefits associated with condors, and the previous exposure to environmental workshops, influence coexistence-based conservation behaviors (evaluate conservation behaviors).
+
+## Packages
+
+Load the packages used
+
+```{r echo=TRUE, eval=TRUE, warning=FALSE}
+library(tidyverse)
+library(MetBrewer)
+library(patchwork)
+library(MASS) # ordinal GLM
+library(nnet) # multinomial GLM
+```
+
+# Data, exploratory and analyzes
+
+```{r}
+perceptions <- read_csv("data_condor/perceptions_data.csv")
+interactions <- read_csv("data_condor/interactions_data.csv")
+str(perceptions)
+str(interactions)
+```
+
+This table summarize 58 interviews, with questions as variables.
+
+## Exploratory description analyses
+
+We can do exploratory description of the sample
+```{r}
+FigSite <- perceptions |>
+  mutate(Site = ifelse(`Paddock site` == 0, "Antisana", "Llanganates")) |>
+  ggplot(aes(x = Site)) +
+    geom_bar(alpha = 0.6, color = "black") +
+    geom_text(aes(label = after_stat(count)), stat = "count", vjust = -0.5)+
+  scale_y_continuous(expand = c(0,0),
+                     limits = c(0,49))+
+    theme_classic()+
+    labs(y = "Number of surveys", 
+         tag = "a)")
+
+FigGender <- perceptions |>
+  mutate(Gender = ifelse(Gender == 0, "Male", "Female")) |>
+  ggplot(aes(x = Gender)) +
+    geom_bar(alpha = 0.6, color = "black") +
+    geom_text(aes(label = after_stat(count)), stat = "count", vjust = -0.5)+
+    scale_y_continuous(expand = c(0,0),
+                     limits = c(0,49))+
+    theme_classic()+
+    labs(y = "Number of surveys", 
+         tag = "b)")
+
+FigOcup <- perceptions |>
+  mutate(Occupation = ifelse(Occupation == 0, "Employer", "Owner")) |>
+  ggplot(aes(x = Occupation)) +
+    geom_bar(alpha = 0.6, color = "black") +
+    geom_text(aes(label = after_stat(count)), stat = "count", vjust = -0.5)+
+    scale_y_continuous(expand = c(0,0),
+                     limits = c(0,44))+
+    theme_classic()+
+    labs(y = "Number of surveys",
+         tag = "c)")
+
+FigAge <- perceptions |>
+  ggplot(aes(x = Age)) +
+    geom_histogram(boundary = 0, binwidth = 10,
+                   alpha = 0.6, color = "black") +
+    scale_y_continuous(expand = c(0,0), 
+                       limits = c(0,17))+
+    annotate("text", x = mean(perceptions$Age), y = 15.5, 
+             label = paste0(round(mean(perceptions$Age))))+
+    annotate("text", x = quantile(perceptions$Age, 0.25), y = 15.5,
+             label = paste0("(",round(quantile(perceptions$Age, 0.25)),")"))+
+    annotate("text", x = quantile(perceptions$Age, 0.75), y = 15.5,
+             label = paste0("(",round(quantile(perceptions$Age, 0.75)),")"))+
+    theme_classic()+
+    labs(y = "Frequency", 
+         x = "Age (years)", 
+         tag ="d)")
+
+FigNanimals <- perceptions |>
+  dplyr::select(Subject, Cattle, Horse, Sheep, Lama) |>
+  pivot_longer(cols = c(Cattle, Horse, Sheep, Lama),
+               names_to = "Livestock", values_to = "Number of animals") |>
+  ggplot(aes(x = `Number of animals`, fill = Livestock)) +
+    geom_histogram(boundary = 0, binwidth = 10,
+                   alpha = 0.6, color = "black") +
+    scale_y_continuous(expand = c(0,0), 
+                       limits = c(0,50))+
+    scale_x_continuous(expand = c(0,0), 
+                       limits = c(0, 610))+
+    scale_fill_manual(values=met.brewer("Renoir", 4))+
+    labs(y = "Frequency",
+         fill = "",
+         tag = "e)")+
+    theme_classic()+
+    theme(legend.position = "inside",
+         legend.position.inside = c(0.5,0.5),
+         legend.direction = "horizontal")+
+  guides(fill = guide_legend(nrow = 2))
+
+FigResi <- perceptions |>
+  ggplot(aes(x = `Time of residence`)) +
+    geom_histogram(boundary = 0, binwidth = 10,
+                   alpha = 0.6, color = "black") +
+    scale_y_continuous(expand = c(0,0), 
+                       limits = c(0,11))+
+    scale_x_continuous(expand = c(0,0))+
+    annotate("text", x = mean(perceptions$`Time of residence`), y = 9.5, 
+             label = round(mean(perceptions$`Time of residence`)))+
+    annotate("text", x = quantile(perceptions$`Time of residence`, 0.25), y = 9.5, 
+             label = paste0("(",round(quantile(perceptions$`Time of residence`, 0.25)),")"))+
+    annotate("text", x = quantile(perceptions$`Time of residence`, 0.75), y = 9.5, 
+             label = paste0("(",round(quantile(perceptions$`Time of residence`, 0.75)),")"))+
+    theme_classic()+
+    labs(y = "Frequency", 
+         x = "Time of residency (years)",
+         tag = "f)")
+
+FigEdu <- perceptions |>
+  mutate(`Education level` = ifelse(`Education level`== 0, "0-None",
+                                    ifelse(`Education level`==1, "1-Primary school",
+                                           ifelse(`Education level`==2,"2-High school",
+                                                  ifelse(`Education level`==3, "3-Technician",
+                                                         ifelse(`Education level`==4, "4-University",
+                                                                NA)))))) |>
+  ggplot(aes(x = `Education level`))+
+    geom_bar(alpha = 0.6, color = "black") +
+    geom_text(aes(label = after_stat(count)), stat = "count", vjust = -0.5)+
+    scale_y_continuous(expand = c(0,0),
+                     limits = c(0,35))+
+    theme_classic()+
+    labs(y = "Number of surveys", 
+         tag = "g)")+
+    theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))
+
+
+FigTypeL <- perceptions |>
+  mutate(`Type of livestock` = ifelse(`Type of livestock`== 0, "0-Cattle",
+                                    ifelse(`Type of livestock`==1, "1-Horse",
+                                           ifelse(`Type of livestock`==2,"2-Cattle and horse",
+                                                  ifelse(`Type of livestock`==3, "3-Cattle, horse, and sheep",
+                                                         ifelse(`Type of livestock`==4, "4-Cattel, horse, and lama",
+                                                                ifelse(`Type of livestock`==5, "5-Cattle and lama",
+                                                                       ifelse(`Type of livestock`==6, "6-All",
+                                                                              NA)))))))) |>
+  ggplot(aes(x = `Type of livestock`))+
+    geom_bar(alpha = 0.6, color = "black") +
+    geom_text(aes(label = after_stat(count)), stat = "count", vjust = -0.5)+
+    scale_y_continuous(expand = c(0,0),
+                     limits = c(0,22))+
+    labs(y = "Number of surveys",
+         tag = "h)")+
+    theme_classic() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))
+
+
+FigTypeP <- perceptions |>
+  mutate(`Type of cattle production` = ifelse(`Type of cattle production`== 0, "0-Beef",
+                                    ifelse(`Type of cattle production`==1, "1-Dairy",
+                                           ifelse(`Type of cattle production`==2,"2-Brave",
+                                                  ifelse(`Type of cattle production`==3, "3-Beef, dairy, and brave",
+                                                         ifelse(`Type of cattle production`==4, "4-Beef and dairy",
+                                                                ifelse(`Type of cattle production`==5, "5-Dairy and brave",
+                                                                              NA))))))) |>
+  ggplot(aes(x = `Type of cattle production`))+
+    geom_bar(alpha = 0.6, color = "black") +
+    geom_text(aes(label = after_stat(count)), stat = "count", vjust = -0.5)+
+    scale_y_continuous(expand = c(0,0),
+                     limits = c(0,29))+
+    labs(y = "Number of surveys", 
+         tag = "i)")+
+    theme_classic() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))
+
+```
+
+And we can combine these 9 panels in a multipanel, descriptive figure
+
+```{r}
+(FigSite | FigGender | FigOcup) / (FigAge | FigNanimals | FigResi) / (FigEdu | FigTypeL | FigTypeP)
+ggsave(filename = "figs/MultipanelFigDescriptive.jpg", dpi = 300, 
+       width = 260, height = 250, units = "mm")
+```
+
+## Perception Bias Hypothesis (aim 1 & 3)
+
+Hypothesis: Farmer perceptions of Andean condor damage are not primarily driven by actual livestock losses but are biased by socio-demographic and psychological factors
+
+### Perception of attack predicted by socio-demographic
+
+This is an ordinal variable (gradually ascending from Never to Often)
+```{r}
+perceptions$Y1 <- ordered(perceptions$`Do you think condors attack living livestock?`, 
+                          levels = c(0, 1, 2, 3))
+perceptions <- perceptions |>
+  mutate(Gender = as.factor(ifelse(Gender == 0, "Male", "Female")),
+         Occupation = as.factor(ifelse(Occupation == 0, "Employer", "Owner")))
+
+mod_perception <- polr(
+  Y1 ~  Age + Gender + `Education level` + `Time of residence` + Occupation,
+  data = perceptions, 
+  Hess = TRUE
+)
+
+summary(mod_perception)
+```
+
+Getting the p-value for the predictors in the model
+
+```{r}
+ctbl_m1 <- coef(summary(mod_perception))
+pvals_m1 <- pnorm(abs(ctbl_m1[, "t value"]), lower.tail = FALSE) * 2
+ctbl_m1 <- cbind(ctbl_m1, "p value" = pvals_m1)
+ctbl_m1
+```
+
+This identify that Education level and Time of residence are the most significant predictors. Higher education is associated with higher odds of having a perception that Andean condors attack livestock more often. Similarly, longer residence slightly increases the odds of having this perceptions. 
+
+```{r}
+exp(0.911161181) # estimated coefficient for Education level
+exp(0.031211522) # estimated coefficient for Time of residence
+```
+
+Each step up in education multiplies the odds of consider the condor harmful by ~2.5, while each additional year of residence time increases these odds by ~3%. The remained predictors were not significant.
+
+Plot the results with a new dataset for predictions
+```{r}
+newdat_m1_ed <- expand.grid(
+  Age = mean(perceptions$Age, na.rm = TRUE),
+  Gender = levels(perceptions$Gender),
+  `Education level` = sort(unique(perceptions$`Education level`)),
+  `Time of residence` = mean(perceptions$`Time of residence`),
+  Occupation = levels(perceptions$Occupation)
+)
+
+pred_m1_ed <- cbind(newdat_m1_ed, predict(mod_perception, newdat_m1_ed, type = "probs"))
+
+pred_m1_ed_long <- pred_m1_ed %>%
+  pivot_longer(cols = c("0", "1", "2", "3"),
+               names_to = "Category",
+               values_to = "Probability") |>
+  mutate(Category = ifelse(Category == 0, "Never",
+                    ifelse(Category == 1, "Rarely", 
+                    ifelse(Category == 2, "Sometimes", 
+                    ifelse(Category == 3, "Often", NA)))), 
+         Category = factor(Category,
+                              levels = c("Never", 
+                                         "Rarely", 
+                                         "Sometimes", 
+                                         "Often")))
+
+p_ed <- ggplot(pred_m1_ed_long, aes(x = `Education level`, 
+                         y = Probability, 
+                         color = Category)) +
+  stat_summary(fun.data = function(z) data.frame(
+    y = median(z),
+    ymin = quantile(z, 0.25),
+    ymax = quantile(z, 0.75)
+  ), geom = "pointrange", alpha = 0.9) +
+  stat_summary(fun = median, geom = "line", size = 1.2, alpha = 0.4) +
+  scale_y_continuous(expand = c(0,0),
+                     limits = c(0,1))+
+  scale_x_continuous(expand = c(0,0), 
+                     limits = c(-0.2, 4.2))+
+  scale_fill_manual(values = met.brewer("Manet",4))+
+  scale_color_manual(values = met.brewer("Manet",4))+
+  labs(y = "Probability of perceibing condors attacking livestock", 
+       tag = "a)")+
+  theme_classic()+
+  theme(legend.position = "none")
+```
+
+Variation represents interquartile range (25-75%) given by other demographics in the model (Gender x Occupation), it does not represent confidence intervals nor standard deviations! It is only to include the demographic heterogeneity of the model for perceptions of attack.
+
+We predict also the values for time of residence.
+
+```{r}
+newdat_m1_tr <- expand.grid(
+  Age = mean(perceptions$Age, na.rm = TRUE),
+  Gender = levels(perceptions$Gender),
+  `Education level` = sort(unique(perceptions$`Education level`)),
+  `Time of residence` = sort(unique(perceptions$`Time of residence`)),
+  Occupation = levels(perceptions$Occupation)
+)
+
+pred_m1_tr <- cbind(newdat_m1_tr, predict(mod_perception, newdat_m1_tr, type = "probs"))
+
+pred_m1_tr_long <- pred_m1_tr %>%
+  pivot_longer(cols = c("0", "1", "2", "3"),
+               names_to = "Category",
+               values_to = "Probability") |>
+  mutate(Category = ifelse(Category == 0, "Never",
+                    ifelse(Category == 1, "Rarely", 
+                    ifelse(Category == 2, "Sometimes", 
+                    ifelse(Category == 3, "Often", NA)))), 
+         Category = factor(Category,
+                              levels = c("Never", 
+                                         "Rarely", 
+                                         "Sometimes", 
+                                         "Often")))
+
+p_tr <- ggplot(pred_m1_tr_long, aes(x = `Time of residence`, 
+                         y = Probability, 
+                         fill = Category)) +
+  stat_summary(fun.data = function(z) data.frame(
+    y = median(z),
+    ymin = quantile(z, 0.25),
+    ymax = quantile(z, 0.75)
+  ), geom = "ribbon", alpha = 0.1) +
+  stat_summary(fun = median, geom = "line", size = 1.2, aes(color = Category)) +
+  scale_y_continuous(expand = c(0,0),
+                     limits = c(0,1))+
+  scale_x_continuous(expand = c(0,0), 
+                     limits = c(1, 81))+
+  scale_fill_manual(values = met.brewer("Manet",4))+
+  scale_color_manual(values = met.brewer("Manet",4))+
+  labs(y = "Probability of perceibing condors attacking livestock", 
+       tag = "b)")+
+  theme_classic()+
+  theme(legend.position = "none")
+```
+
+Combine the figures
+
+```{r}
+(p_ed | p_tr) +
+  plot_layout(guides = "collect") +
+  theme(
+    legend.position = "bottom",
+    legend.direction = "vertical"
+  )
+```
+
+### Perception of harmfulness or mixed compared to beneficial
+
+This is a nominal outcome, without an specific order (Beneficial, Harmful, Both)
+
+```{r}
+perceptions_b <- perceptions |>
+  mutate(Y_benefit = ifelse(`Could you indicate if the Andean condor is beneficial and/or harmful to you?` == 0, "Harmful",
+                     ifelse(`Could you indicate if the Andean condor is beneficial and/or harmful to you?` == 1, "Beneficial",
+                     ifelse(`Could you indicate if the Andean condor is beneficial and/or harmful to you?` == 2, "Both",
+                            NA))),
+         Y_benefit = factor(Y_benefit, 
+                            levels = c("Beneficial",
+                                       "Harmful",
+                                       "Both")),
+         seen_attack = ifelse(`Have you ever seen condors attacking living livestock?`== 0, "Yes",
+                    "No"),
+         seen_attack = factor(seen_attack, 
+                           levels = c("No",
+                                      "Yes")))
+
+
+mod_benefit <- multinom(
+  Y_benefit ~ Age + Gender + `Education level` + 
+    `Time of residence` + Occupation + seen_attack,
+  data = perceptions_b
+)
+
+summary(mod_benefit)
+```
+
+To get the p-values
+```{r}
+z_benef <- summary(mod_benefit)$coefficients / summary(mod_benefit)$standard.errors
+pvals_benef <- 2 * (1 - pnorm(abs(z_benef)))
+pvals_benef
+```
+
+With the question "What makes farmers perceive condors as harmful or both, instead of beneficial?" These p-values identify immediately that farmers who have seen condors attacking livestock are overwhelmingly more likely to classify condors as harmful or both, compared to beneficial. This aligns with the contingency table of the perception of benefit and seen condors attacking livestock
+```{r}
+table(perceptions_b$seen_attack, perceptions_b$Y_benefit)
+```
+
+The unique variable associated with this perception of benefit/harmfulness (or both) is have seen condors attacking livestock (marginal effect of Time of residence and Education level when comparing Beneficial-Both)
+```{r}
+newdat_m2_ben <- expand.grid(
+  Age = mean(perceptions_b$Age, na.rm = TRUE),
+  Gender = levels(perceptions_b$Gender),
+  `Education level` = sort(unique(perceptions_b$`Education level`)),
+  `Time of residence` = sort(unique(perceptions_b$`Time of residence`)),
+  Occupation = levels(perceptions_b$Occupation),
+  seen_attack = levels(perceptions_b$seen_attack)
+)
+
+pred_m2_ben <- cbind(newdat_m2_ben, predict(mod_benefit, newdat_m2_ben, type = "probs"))
+
+pred_m2_ben_long <- pred_m2_ben %>%
+  pivot_longer(cols = c("Beneficial", "Harmful", "Both"),
+               names_to = "Category",
+               values_to = "Probability")
+
+ggplot(pred_m2_ben_long, aes(x = seen_attack, 
+                         y = Probability, 
+                         color = Category)) +
+  stat_summary(fun.data = function(z) data.frame(
+    y = median(z),
+    ymin = quantile(z, 0.25),
+    ymax = quantile(z, 0.75)
+  ), geom = "pointrange", alpha = 0.9, position = position_dodge(width = 0.5)) +
+  scale_y_continuous(expand = c(0,0),
+                     limits = c(0,1))+
+  scale_color_manual(values = met.brewer("Java"))+
+  labs(y = "Probability of perceibing condors as beneficial/harmful",
+       x = "Have the farmers ever seen condors attacking livestock?")+
+  theme_classic()+
+  theme(legend.position = "bottom")
+```
+
+## Ecological Vulnerability Hypothesis (aim 2)
+
+Hypothesis: Antagonistic interactions between condors and livestock are driven by livestock vulnerability and food availability, not by a shift in condor behavior from scavenger to predator. Thus, perceived impacts are likely to exceed those supported by empirical evidence.
+
+
