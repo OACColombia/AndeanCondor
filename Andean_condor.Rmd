@@ -1,5 +1,5 @@
 ---
-title: "Andean condor as predator"
+title: "Human conflicts over a vulnerable apex top scavenging bird: perceptions on the Andean condor"
 author: "Juan Sebastián Restrepo, Orlando Acevedo-Charry, ..., & Vanessa Hull"
 date: "`r format(Sys.time(), '%d %B %Y')`"
 output:
@@ -17,14 +17,17 @@ knitr::opts_chunk$set(echo = TRUE)
 
 # Read me
 
-This paper aims to understand human-vulture interactions regarding the role of the Andean Condor (*Vultur gryphus*) as a potential predator. The specific aims were: 
+This paper aims to understand human-vulture perception of conflict regarding the role of the Andean Condor (*Vultur gryphus*) as a potential predator. The specific aims were: 
 
-* (Perception bias hypothesis - a) study local perceptions of the negative impacts of condors on livelihoods and the responses to conflicts, the perceived benefits provided by condors, and analyze how these perceptions relate to socio-demographic and psychological factors, and livestock management practices. 
-* (Perception bias hypothesis - b) assess whether field observations support the reported perceptions of condor-related damage (compare perceptions and reality) 
+* To examine local perceptions of the negative impacts of condors as potential predator of livestock, and analyze how these perceptions relate to socio-demographic and psychological factors, livestock management practices, and experience or attitude by farmers.
 
-* (Ecological vulnerability hypothesis) quantify the extent of potential Andean condor predation on livestock, and 
+* To examine local perceptions of the condor's contributions to farmers: negative due to perception of harmfulness, positive due to perceived benefits and values, or a combination of both, and analyze how these perceptions relate to socio-demographic and psychological factors, livestock management practices, and experience or attitude by farmers (including perception of attacking livestock).
 
-* (Coexistence behavior hypothesis) in addition, we also explored how people's perceptions of the costs and benefits associated with condors, and the previous exposure to environmental workshops, influence coexistence-based conservation behaviors (evaluate conservation behaviors).
+* To assess whether field observations support the reported perceptions of condor-related damage
+
+* To explore how people's perceptions of the costs and benefits associated with condors, and the previous exposure to environmental workshops, influence coexistence-based conservation behaviors (evaluate conservation behaviors).
+
+A further work will assess attitudes (feelings, disappear, population preference change) as response variables, but in this study we focused on perceptions as response variables.
 
 ## Packages
 
@@ -39,9 +42,94 @@ library(nnet) # multinomial GLM
 library(logistf) # Firth's Bias-Reduced Logistic Regression (penalized-likelihood)
 ```
 
-# Data loading and exploratory analyzes
+## Useful functions
 
 ```{r}
+# Predict from parameters
+predict_from_params <- function(params, newdata, model) {
+  # number of beta coefficients
+  nb <- length(model$coefficients)
+  
+  # replace coefficients
+  model$coefficients <- params[1:nb]
+  
+  # replace thresholds
+  model$zeta <- params[(nb+1):length(params)]
+  
+  predict(model, newdata, type = "probs")
+}
+
+# Predicting from multinomial parameters
+predict_multinom_params <- function(par, newdata, model) {
+  
+  # number of non-reference categories and predictors
+  K <- length(model$lev) - 1
+  P <- length(model$coefnames)
+  
+  # reshape parameter vector into matrix
+  par_mat <- matrix(par, nrow = K, ncol = P, byrow = TRUE)
+  rownames(par_mat) <- model$lev[-1] # all but the reference
+  colnames(par_mat) <- model$coefnames
+  
+  # extract RHS of formula (no response)
+  rhs <- delete.response(terms(model))
+  
+  # model matrix for newdata
+  X <- model.matrix(rhs, newdata)
+  
+  # linear predictors for each non-reference category
+  eta <- X %*% t(par_mat)   # dim: [rows × K]
+  
+  # add reference category (0)
+  eta_full <- cbind(0, eta)
+  
+  # softmax to convert to probabilities
+  probs <- exp(eta_full) / rowSums(exp(eta_full))
+  
+  colnames(probs) <- model$lev
+  
+  return(probs)
+}
+
+# Inverted logit to convert linear predictors to probabilities
+invlogit <- function(x) exp(x) / (1 + exp(x))
+
+# AICc comparison for Firth's bias-reduced logistic regression
+AICc_logistf <- function(model) {
+  ll <- model$loglik  # penalized log-likelihood (implemented in logistf)
+  K  <- length(model$coef)  # number of parameters
+  n  <- model$n  # sample size
+  
+  AIC  <- -2 * ll + 2 * K # AIC formula
+  AICc <- AIC + (2 * K * (K + 1)) / (n - K - 1) # small sample correction
+  
+  return(data.frame(AIC = AIC, AICc = AICc, K = K))
+}
+
+# Make predictions from logistic regression with penalized likelihood
+make_pred_df <- function(model, newdata, xvar) {
+  
+  pred_lp <- predict(model, newdata, type = "link", se.fit = TRUE)
+  
+  newdata$lp      <- pred_lp$fit
+  newdata$lp_low  <- pred_lp$fit - 1.96 * pred_lp$se.fit
+  newdata$lp_high <- pred_lp$fit + 1.96 * pred_lp$se.fit
+  
+  invlogit <- function(x) exp(x) / (1 + exp(x))
+  
+  newdata$pred      <- invlogit(newdata$lp)
+  newdata$pred_low  <- invlogit(newdata$lp_low)
+  newdata$pred_high <- invlogit(newdata$lp_high)
+  
+  newdata$xvar <- newdata[[xvar]]
+  
+  return(newdata)
+}
+```
+
+# Data loading and exploratory analyzes (0)
+
+```{r, warning=FALSE}
 perceptions <- read_csv("data_condor/perceptions_data.csv")
 interactions <- read_csv("data_condor/interactions_data.csv")
 str(perceptions)
@@ -53,7 +141,7 @@ This table summarize 58 interviews, with questions as variables.
 ## Exploratory description analyses
 
 We can do exploratory description of the sample
-```{r}
+```{r Geographic and demographic exploratory, echo = FALSE}
 FigSite <- perceptions |>
   mutate(Site = ifelse(`Paddock site` == 0, "Antisana", "Llanganates")) |>
   ggplot(aes(x = Site)) +
@@ -102,28 +190,7 @@ FigAge <- perceptions |>
     theme_classic()+
     labs(y = "Frequency", 
          x = "Age (years)", 
-         tag ="d)")
-
-FigNanimals <- perceptions |>
-  dplyr::select(Subject, Cattle, Horse, Sheep, Lama) |>
-  pivot_longer(cols = c(Cattle, Horse, Sheep, Lama),
-               names_to = "Livestock", values_to = "Number of animals") |>
-  ggplot(aes(x = `Number of animals`, fill = Livestock)) +
-    geom_histogram(boundary = 0, binwidth = 10,
-                   alpha = 0.6, color = "black") +
-    scale_y_continuous(expand = c(0,0), 
-                       limits = c(0,50))+
-    scale_x_continuous(expand = c(0,0), 
-                       limits = c(0, 610))+
-    scale_fill_manual(values=met.brewer("Renoir", 4))+
-    labs(y = "Frequency",
-         fill = "",
-         tag = "e)")+
-    theme_classic()+
-    theme(legend.position = "inside",
-         legend.position.inside = c(0.5,0.5),
-         legend.direction = "horizontal")+
-  guides(fill = guide_legend(nrow = 2))
+         tag ="e)")
 
 FigResi <- perceptions |>
   ggplot(aes(x = `Time of residence`)) +
@@ -145,11 +212,11 @@ FigResi <- perceptions |>
 
 FigEdu <- perceptions |>
   mutate(`Education level` = ifelse(`Education level`== 0, "0-None",
-                                    ifelse(`Education level`==1, "1-Primary school",
-                                           ifelse(`Education level`==2,"2-High school",
-                                                  ifelse(`Education level`==3, "3-Technician",
-                                                         ifelse(`Education level`==4, "4-University",
-                                                                NA)))))) |>
+                             ifelse(`Education level`==1, "1-Primary school",
+                             ifelse(`Education level`==2,"2-High school",
+                             ifelse(`Education level`==3, "3-Technician",
+                             ifelse(`Education level`==4, "4-University",
+                             NA)))))) |>
   ggplot(aes(x = `Education level`))+
     geom_bar(alpha = 0.6, color = "black") +
     geom_text(aes(label = after_stat(count)), stat = "count", vjust = -0.5)+
@@ -157,9 +224,32 @@ FigEdu <- perceptions |>
                      limits = c(0,35))+
     theme_classic()+
     labs(y = "Number of surveys", 
-         tag = "g)")+
+         tag = "d)")+
     theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))
 
+(FigSite | FigGender | FigOcup) / (FigEdu | FigAge | FigResi) 
+ggsave(filename = "figs/Fig_descriptive_geo_demo.jpg", dpi = 300, 
+       width = 260, height = 160, units = "mm")
+
+```
+
+```{r Farm exploratory, echo = FALSE}
+FigNanimals <- perceptions |>
+  dplyr::select(Subject, Cattle, Horse, Sheep, Lama) |>
+  pivot_longer(cols = c(Cattle, Horse, Sheep, Lama),
+               names_to = "Livestock", values_to = "Number of animals") |>
+  group_by(Livestock) |>
+  summarise(`Number of animals` = sum(`Number of animals`, na.rm = TRUE), .groups = "drop") |>
+  ggplot(aes(x = Livestock, y = `Number of animals`)) +
+    geom_col(alpha = 0.6, color = "black") +
+    geom_text(aes(label = `Number of animals`), vjust = -0.5)+
+    scale_y_continuous(expand = c(0,0), 
+                       limits = c(0,2800))+
+    labs(y = "Number of animals",
+         fill = "",
+         tag = "a)")+
+    theme_classic()+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))
 
 FigTypeL <- perceptions |>
   mutate(`Type of livestock` = ifelse(`Type of livestock`== 0, "0-Cattle",
@@ -176,7 +266,7 @@ FigTypeL <- perceptions |>
     scale_y_continuous(expand = c(0,0),
                      limits = c(0,22))+
     labs(y = "Number of surveys",
-         tag = "h)")+
+         tag = "b)")+
     theme_classic() +
     theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))
 
@@ -184,192 +274,918 @@ FigTypeL <- perceptions |>
 FigTypeP <- perceptions |>
   mutate(`Type of cattle production` = ifelse(`Type of cattle production`== 0, "0-Beef",
                                     ifelse(`Type of cattle production`==1, "1-Dairy",
-                                           ifelse(`Type of cattle production`==2,"2-Brave",
-                                                  ifelse(`Type of cattle production`==3, "3-Beef, dairy, and brave",
-                                                         ifelse(`Type of cattle production`==4, "4-Beef and dairy",
-                                                                ifelse(`Type of cattle production`==5, "5-Dairy and brave",
-                                                                              NA))))))) |>
+                                    ifelse(`Type of cattle production`==2,"2-Brave",
+                                    ifelse(`Type of cattle production`==3, "3-Beef, dairy, and brave",
+                                    ifelse(`Type of cattle production`==4, "4-Beef and dairy",
+                                    ifelse(`Type of cattle production`==5, "5-Dairy and brave",
+                                    NA))))))) |>
   ggplot(aes(x = `Type of cattle production`))+
     geom_bar(alpha = 0.6, color = "black") +
     geom_text(aes(label = after_stat(count)), stat = "count", vjust = -0.5)+
     scale_y_continuous(expand = c(0,0),
                      limits = c(0,29))+
     labs(y = "Number of surveys", 
-         tag = "i)")+
+         tag = "c)")+
     theme_classic() +
     theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))
 
+(FigNanimals | FigTypeL | FigTypeP) 
+ggsave(filename = "figs/Fig_descriptive_farm_livestock.jpg", dpi = 300, 
+       width = 260, height = 100, units = "mm")
 ```
 
-And we can combine these 9 panels in a multipanel, descriptive figure
+```{r Perceptions exploratory, echo = FALSE}
+FigPerception <- perceptions |>
+  mutate(`Do condors attack livestock?` = ifelse(`Do you think condors attack living livestock?`== 0, "0-Never",
+                                    ifelse(`Do you think condors attack living livestock?`==1, "1-Rarely",
+                                    ifelse(`Do you think condors attack living livestock?`==2,"2-Sometimes",
+                                    ifelse(`Do you think condors attack living livestock?`==3, "3-Often",NA))))) |>
+  ggplot(aes(x = `Do condors attack livestock?`))+
+    geom_bar(alpha = 0.6, color = "black") +
+    geom_text(aes(label = after_stat(count)), stat = "count", vjust = -0.5)+
+    scale_y_continuous(expand = c(0,0),
+                     limits = c(0,24))+
+    labs(y = "Number of surveys", 
+         tag = "a)")+
+    theme_classic() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))
 
-```{r}
-(FigSite | FigGender | FigOcup) / (FigAge | FigNanimals | FigResi) / (FigEdu | FigTypeL | FigTypeP)
-ggsave(filename = "figs/MultipanelFigDescriptive.jpg", dpi = 300, 
-       width = 260, height = 250, units = "mm")
+FigBenef <- perceptions |>
+  mutate(`Do condors are beneficial/harmful` = ifelse(`Could you indicate if the Andean condor is beneficial and/or harmful to you?`== 0, "2-Harmful",
+                                    ifelse(`Could you indicate if the Andean condor is beneficial and/or harmful to you?`==1, "0-Beneficial",
+                                    ifelse(`Could you indicate if the Andean condor is beneficial and/or harmful to you?`==2,"1-Both",NA)))) |>
+  ggplot(aes(x = `Do condors are beneficial/harmful`))+
+    geom_bar(alpha = 0.6, color = "black") +
+    geom_text(aes(label = after_stat(count)), stat = "count", vjust = -0.5)+
+    scale_y_continuous(expand = c(0,0),
+                     limits = c(0,36))+
+    labs(y = "Number of surveys", 
+         tag = "b)")+
+    theme_classic() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))
+
+FigPercPop <- perceptions |>
+  mutate(`What is the condor population status?` = ifelse(`Do you consider that the Andean condor population in this area?`== 0, "0-Decreased a lot",
+                                    ifelse(`Do you consider that the Andean condor population in this area?`==1, "1-Decreased",
+                                    ifelse(`Do you consider that the Andean condor population in this area?`==2,"2-Remain stable",
+                                    ifelse(`Do you consider that the Andean condor population in this area?`==3, "3-Increased",
+                                    ifelse(`Do you consider that the Andean condor population in this area?`==4, "4-Increased a lot", NA)))))) |>
+  ggplot(aes(x = `What is the condor population status?`))+
+    geom_bar(alpha = 0.6, color = "black") +
+    geom_text(aes(label = after_stat(count)), stat = "count", vjust = -0.5)+
+    scale_y_continuous(expand = c(0,0),
+                     limits = c(0,32))+
+    labs(y = "Number of surveys", 
+         tag = "d)")+
+    theme_classic() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))
+
+FigImportance <- perceptions |>
+  mutate(`Is the condor important to the people?` = ifelse(`Do you think the Andean condor is important to people?`== 0, "1-Yes",
+                                    ifelse(`Do you think the Andean condor is important to people?`== 1, "0-No",
+                                    ifelse(`Do you think the Andean condor is important to people?`== 2,"2-Don't know",NA)))) |>
+  ggplot(aes(x = `Is the condor important to the people?`))+
+    geom_bar(alpha = 0.6, color = "black") +
+    geom_text(aes(label = after_stat(count)), stat = "count", vjust = -0.5)+
+    scale_y_continuous(expand = c(0,0),
+                     limits = c(0,52))+
+    labs(y = "Number of surveys", 
+         tag = "c)")+
+    theme_classic() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))
+
+FigConserv <- perceptions |>
+  mutate(`Willingness to support conservation?` = ifelse(`Would you be willing to support the protection of the Andean condor on your farm?`== 0, "1-Yes",
+                                    ifelse(`Would you be willing to support the protection of the Andean condor on your farm?`== 1, "0-No",NA))) |>
+  ggplot(aes(x = `Willingness to support conservation?`))+
+    geom_bar(alpha = 0.6, color = "black") +
+    geom_text(aes(label = after_stat(count)), stat = "count", vjust = -0.5)+
+    scale_y_continuous(expand = c(0,0),
+                     limits = c(0,58))+
+    labs(y = "Number of surveys", 
+         tag = "e)")+
+    theme_classic() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))
+
+FigAcceptance <- perceptions |>
+  mutate(`Are livestock losses from condors?` = ifelse(`If you have suffered the loss of livestock due to attacks by condors in the last 5 years, do you consider these losses acceptable, unacceptable, or negligible?`== 0, "0-Acceptable",
+                                    ifelse(`If you have suffered the loss of livestock due to attacks by condors in the last 5 years, do you consider these losses acceptable, unacceptable, or negligible?`== 1, "2-Negligible",
+                                    ifelse(`If you have suffered the loss of livestock due to attacks by condors in the last 5 years, do you consider these losses acceptable, unacceptable, or negligible?`== 2,"1-Unacceptable",NA)))) |>
+  ggplot(aes(x = `Are livestock losses from condors?`))+
+    geom_bar(alpha = 0.6, color = "black") +
+    geom_text(aes(label = after_stat(count)), stat = "count", vjust = -0.5)+
+    scale_y_continuous(expand = c(0,0),
+                     limits = c(0,38))+
+    labs(y = "Number of surveys", 
+         tag = "e)")+
+    theme_classic() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))
+
+(FigPerception | FigBenef | FigImportance) / (FigPercPop | FigConserv | FigAcceptance)
+ggsave(filename = "figs/Fig_descriptive_perceptions.jpg", dpi = 300, 
+       width = 260, height = 160, units = "mm")
 ```
-![**Descriptive multipanel figure of the data from perspective interviews to the community in Ecuador.** Barplots for categorical demographic and socio-economic information shows the number of individuals above the bars (a-c,g-i). Histograms of numeric variables (d,f) show the mean and interquartile range (in perentheses). Central panel (e) show the number of animals of four livestock types, showing the majority of the data came from small-lifestock farms (<100 animals).](figs/MultipanelFigDescriptive.jpg)
 
-# Perception Bias Hypothesis (aims 1 & 2)
+```{r Experiences descriptive, echo = FALSE}
+FigLosses <- perceptions |>
+  mutate(`Losses due to condors?` = ifelse(`Have you suffered losses of livestock due to attacks by condors?` == 0, "1-Yes",
+                                                        ifelse(`Have you suffered losses of livestock due to attacks by condors?` == 1, "0-No",NA))) |>
+  ggplot(aes(x = `Losses due to condors?`)) +
+    geom_bar(alpha = 0.6, color = "black") +
+    geom_text(aes(label = after_stat(count)), stat = "count", vjust = -0.5)+
+    scale_y_continuous(expand = c(0,0), 
+                       limits = c(0,38))+
+    labs(y = "Number of surveys",
+         fill = "",
+         tag = "a)")+
+    theme_classic()
 
-Hypothesis: Farmer perceptions of Andean condor damage are not primarily driven by actual livestock losses but are biased by socio-demographic and psychological factors
+FigSeenAttack <- perceptions |>
+  mutate(`Seen condors attacking?` = ifelse(`Have you ever seen condors attacking living livestock?`== 0, "1-Yes",
+                               ifelse(`Have you ever seen condors attacking living livestock?`== 1, "0-No",
+                                      NA))) |>
+  ggplot(aes(x = `Seen condors attacking?`))+
+    geom_bar(alpha = 0.6, color = "black") +
+    geom_text(aes(label = after_stat(count)), stat = "count", vjust = -0.5)+
+    scale_y_continuous(expand = c(0,0),
+                     limits = c(0,52))+
+    labs(y = "Number of surveys",
+         tag = "b)")+
+    theme_classic() 
 
-## Perception of attack predicted by socio-demographic (1)
+FigWorkshops <- perceptions |>
+  mutate(`Conservation workshops?` = ifelse(`Have you attended talks/trainings on the environment?`== 0, "1-Yes",
+                                    ifelse(`Have you attended talks/trainings on the environment?`==1, "0-No",NA))) |>
+  ggplot(aes(x = `Conservation workshops?`))+
+    geom_bar(alpha = 0.6, color = "black") +
+    geom_text(aes(label = after_stat(count)), stat = "count", vjust = -0.5)+
+    scale_y_continuous(expand = c(0,0),
+                     limits = c(0,44))+
+    labs(y = "Number of surveys", 
+         tag = "c)")+
+    theme_classic()
+
+(FigLosses | FigSeenAttack | FigWorkshops) 
+ggsave(filename = "figs/Fig_descriptive_farm_experiences.jpg", dpi = 300, 
+       width = 260, height = 100, units = "mm")
+```
+
+```{r Solutions exploratory, echo = FALSE}
+FigReport <- perceptions |>
+  mutate(`Reported if any attack?` = ifelse(`If you have suffered an attack in the last 5 years, have you reported it to the provincial authority?` == 0, "1-Yes",
+                                                        ifelse(`If you have suffered an attack in the last 5 years, have you reported it to the provincial authority?` == 1, "0-No",NA))) |>
+  ggplot(aes(x = `Reported if any attack?`)) +
+    geom_bar(alpha = 0.6, color = "black") +
+    geom_text(aes(label = after_stat(count)), stat = "count", vjust = -0.5)+
+    scale_y_continuous(expand = c(0,0), 
+                       limits = c(0,38))+
+    labs(y = "Number of surveys",
+         fill = "",
+         tag = "a)")+
+    theme_classic() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))
+
+FigLethal <- perceptions |>
+  mutate(`Which solution?` = ifelse(`What do you think could be a solution to prevent Andean condors from attacking livestock?`== 0, "0-Lethal control",
+                               ifelse(`What do you think could be a solution to prevent Andean condors from attacking livestock?`== 1, "1-No lethal control",
+                               ifelse(`What do you think could be a solution to prevent Andean condors from attacking livestock?`== 2, "2-Don't know", NA)))) |>
+  ggplot(aes(x = `Which solution?`))+
+    geom_bar(alpha = 0.6, color = "black") +
+    geom_text(aes(label = after_stat(count)), stat = "count", vjust = -0.5)+
+    scale_y_continuous(expand = c(0,0),
+                     limits = c(0,52))+
+    labs(y = "Number of surveys",
+         tag = "b)")+
+    theme_classic() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))
+
+FigKilling <- perceptions |>
+  mutate(`Is killing condors needed?` = factor(ifelse(`Killing condors is necessary to prevent further damage?`== 0, "0-Strongly agree",
+                                    ifelse(`Killing condors is necessary to prevent further damage?`== 1, "1-Agree",
+                                    ifelse(`Killing condors is necessary to prevent further damage?`== 2, "2-Neither",
+                                    ifelse(`Killing condors is necessary to prevent further damage?`== 3, "3-Disagree", 
+                                    ifelse(`Killing condors is necessary to prevent further damage?`== 4, "4-Strongly disagree", NA))))),
+         levels = c("0-Strongly agree",
+                    "1-Agree",
+                    "2-Neither",
+                    "3-Disagree",
+                    "4-Strongly disagree"),
+         labels = c("0-Strongly agree",
+                    "1-Agree",
+                    "2-Neither",
+                    "3-Disagree",
+                    "4-Strongly disagree"))) |>
+  ggplot(aes(x = `Is killing condors needed?`))+
+    geom_bar(alpha = 0.6, color = "black") +
+    geom_text(aes(label = after_stat(count)), stat = "count", vjust = -0.5)+
+    scale_y_continuous(expand = c(0,0),
+                     limits = c(0,44))+
+  scale_x_discrete(drop = FALSE)+
+    labs(y = "Number of surveys", 
+         tag = "c)")+
+    theme_classic()+
+    theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))
+
+(FigReport | FigLethal | FigKilling) 
+ggsave(filename = "figs/Fig_descriptive_solutions.jpg", dpi = 300, 
+       width = 260, height = 100, units = "mm")
+```
+
+```{r Attitudes exploratory, echo = FALSE}
+FigFeelings <- perceptions |>
+  mutate(`Feelings towards condors?` = ifelse(`What are your feelings towards Andean condors?` == 0, "4-Like a lot",
+                                                        ifelse(`What are your feelings towards Andean condors?` == 1, "3-Like",
+                                                        ifelse(`What are your feelings towards Andean condors?` == 2, "2-Indifferent",
+                                                        ifelse(`What are your feelings towards Andean condors?` == 3, "1-Dislike",
+                                                        ifelse(`What are your feelings towards Andean condors?` == 4, "0-Dislike a lot",NA)))))) |>
+  ggplot(aes(x = `Feelings towards condors?`)) +
+    geom_bar(alpha = 0.6, color = "black") +
+    geom_text(aes(label = after_stat(count)), stat = "count", vjust = -0.5)+
+    scale_y_continuous(expand = c(0,0), 
+                       limits = c(0,32))+
+    labs(y = "Number of surveys",
+         fill = "",
+         tag = "a)")+
+    theme_classic() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))
+
+FigDisappear <- perceptions |>
+  mutate(`Feelings if condors disappear?` = ifelse(`What would you feel if all of the condors disappeared forever from the region?`== 0, "0-Very happy",
+                               ifelse(`What would you feel if all of the condors disappeared forever from the region?`== 1, "1-Happy",
+                               ifelse(`What would you feel if all of the condors disappeared forever from the region?`== 2, "2-Indifferent", 
+                               ifelse(`What would you feel if all of the condors disappeared forever from the region?`== 3, "3-Sad",
+                               ifelse(`What would you feel if all of the condors disappeared forever from the region?`== 4, "3-Very sad",NA)))))) |>
+  ggplot(aes(x = `Feelings if condors disappear?`))+
+    geom_bar(alpha = 0.6, color = "black") +
+    geom_text(aes(label = after_stat(count)), stat = "count", vjust = -0.5)+
+    scale_y_continuous(expand = c(0,0),
+                     limits = c(0,38))+
+    labs(y = "Number of surveys",
+         tag = "b)")+
+    theme_classic() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))
+
+FigAttPop <- perceptions |>
+  mutate(`Would like condor population to?` = factor(ifelse(`Would you like the Andean condor population in the National Park and the surrounding area to?`== 0, "0-Decrease a lot",
+                                    ifelse(`Would you like the Andean condor population in the National Park and the surrounding area to?`== 1, "1-Decrease",
+                                    ifelse(`Would you like the Andean condor population in the National Park and the surrounding area to?`== 2, "2-Remain stable",
+                                    ifelse(`Would you like the Andean condor population in the National Park and the surrounding area to?`== 3, "3-Increase", 
+                                    ifelse(`Would you like the Andean condor population in the National Park and the surrounding area to?`== 4, "4-Increase a lot", NA))))),
+         levels = c("0-Decrease a lot",
+                    "1-Decrease",
+                    "2-Remain stable",
+                    "3-Increase",
+                    "4-Increase a lot"),
+         labels = c("0-Decrease a lot",
+                    "1-Decrease",
+                    "2-Remain stable",
+                    "3-Increase",
+                    "4-Increase a lot"))) |>
+  ggplot(aes(x = `Would like condor population to?`))+
+    geom_bar(alpha = 0.6, color = "black") +
+    geom_text(aes(label = after_stat(count)), stat = "count", vjust = -0.5)+
+    scale_y_continuous(expand = c(0,0),
+                     limits = c(0,38))+
+  scale_x_discrete(drop = FALSE)+
+    labs(y = "Number of surveys", 
+         tag = "c)")+
+    theme_classic()+
+    theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))
+
+(FigFeelings | FigDisappear | FigAttPop) 
+ggsave(filename = "figs/Fig_descriptive_attitudes.jpg", dpi = 300, 
+       width = 260, height = 100, units = "mm")
+```
+
+```{r behaviors exploratory, echo = FALSE}
+FigLeave <- perceptions |>
+  mutate(`Do farmers leave carcasses?` = ifelse(`Do you leave livestock carcasses in the field to be consumed by condors?`== 0, "1-Yes",
+                                    ifelse(`Do you leave livestock carcasses in the field to be consumed by condors?`==1, "0-No",NA))) |>
+  ggplot(aes(x = `Do farmers leave carcasses?`))+
+    geom_bar(alpha = 0.6, color = "black") +
+    geom_text(aes(label = after_stat(count)), stat = "count", vjust = -0.5)+
+    scale_y_continuous(expand = c(0,0),
+                     limits = c(0,36))+
+    labs(y = "Number of surveys", 
+         tag = "a)")+
+    theme_classic()
+
+FigEduca <- perceptions |>
+  mutate(`Do farmers educate others?` = ifelse(`Do you educate others about the importance of Andean condor conservation?`== 0, "1-Yes",
+                                    ifelse(`Do you educate others about the importance of Andean condor conservation?`==1, "0-No",NA))) |>
+  ggplot(aes(x = `Do farmers educate others?`))+
+    geom_bar(alpha = 0.6, color = "black") +
+    geom_text(aes(label = after_stat(count)), stat = "count", vjust = -0.5)+
+    scale_y_continuous(expand = c(0,0),
+                     limits = c(0,32))+
+    labs(y = "Number of surveys", 
+         tag = "b)")+
+    theme_classic()
+
+(FigLeave | FigEduca)
+ggsave(filename = "figs/Fig_descriptive_behavior.jpg", dpi = 300, 
+       width = 160, height = 100, units = "mm")
+```
+
+# Perception of people that Andean condor attacks livestock (1)
+
+Farmers perceive the Andean condor as a livestock predator, but vary with socio-demographic, farm characteristics, and experience/attitudes
+
+## Perception of attack predicted by socio-demographic (1a)
 
 This is an ordinal variable (gradually ascending from Never to Often)
 ```{r}
-perceptions$Y1 <- ordered(perceptions$`Do you think condors attack living livestock?`, 
-                          levels = c(0, 1, 2, 3))
-perceptions <- perceptions |>
-  mutate(Gender = as.factor(ifelse(Gender == 0, "Male", "Female")),
-         Occupation = as.factor(ifelse(Occupation == 0, "Employer", "Owner")))
+perceptions_Y1 <- perceptions |>
+  mutate(perceptions_1 = ordered(`Do you think condors attack living livestock?`, 
+                          levels = c(0, 1, 2, 3)),
+         site = as.factor(ifelse(`Paddock site` == 0, "Antisana",
+                       "Llanganates")),
+         gender = as.factor(ifelse(Gender == 0, "Male", "Female")),
+         age = Age,
+         edu.level = factor(`Education level`, 
+                       levels = 0:4, 
+                       labels = c("0-None","1-Prim","2-High","3-Tech","4-Univ")),
+         t.residence = `Time of residence`,
+         occupation = as.factor(ifelse(Occupation == 0, "Employer","Owner")))
 
-mod_perception <- polr(
-  Y1 ~  Age + Gender + `Education level` + `Time of residence` + Occupation,
-  data = perceptions, 
-  Hess = TRUE
+# sequencial contrast for education level
+contrasts(perceptions_Y1$edu.level) <- MASS::contr.sdif(5)
+
+# a list of ordered logistic regression
+mods_perceptions_demogra <- list(
+  site  = polr(perceptions_1 ~ site,  data = perceptions_Y1),
+  gender  = polr(perceptions_1 ~ gender,  data = perceptions_Y1),
+  age   = polr(perceptions_1 ~ age,  data = perceptions_Y1),
+  edu.level  = polr(perceptions_1 ~ edu.level,  data = perceptions_Y1),
+  t.residence  = polr(perceptions_1 ~ t.residence,  data = perceptions_Y1),
+  occupation   = polr(perceptions_1 ~ occupation,  data = perceptions_Y1)
+  )
+
+AICcmodavg::aictab(mods_perceptions_demogra) # edu.level and t.residence
+
+mods_perceptions_demogra <- list(
+  null = polr(perceptions_1 ~ 1,
+              data = perceptions_Y1, Hess = TRUE),
+  site  = polr(perceptions_1 ~ site,
+               data = perceptions_Y1, Hess = TRUE),
+  gender  = polr(perceptions_1 ~ gender,
+                 data = perceptions_Y1, Hess = TRUE),
+  age   = polr(perceptions_1 ~ age, 
+               data = perceptions_Y1, Hess = TRUE),
+  edu.level  = polr(perceptions_1 ~ edu.level, 
+                    data = perceptions_Y1, Hess = TRUE),
+  t.residence  = polr(perceptions_1 ~ t.residence, 
+                      data = perceptions_Y1, Hess = TRUE),
+  occupation   = polr(perceptions_1 ~ occupation, 
+                      data = perceptions_Y1, Hess = TRUE),
+  # after first single model with deltaAIC < 2 for two models: edu.level and t.residence
+  edu.t.res = polr(perceptions_1 ~ edu.level + t.residence,
+                   data = perceptions_Y1, Hess = TRUE),
+  global = polr(perceptions_1 ~ edu.level + t.residence + age + gender + site + occupation,
+                   data = perceptions_Y1, Hess = TRUE)
 )
 
-summary(mod_perception)
+AICcmodavg::aictab(mods_perceptions_demogra) # edu.level and t.residence
 ```
 
 Getting the p-value for the predictors in the model
 
 ```{r}
-ctbl_m1 <- coef(summary(mod_perception))
+ctbl_m1 <- coef(summary(mods_perceptions_demogra$edu.t.res))
 pvals_m1 <- pnorm(abs(ctbl_m1[, "t value"]), lower.tail = FALSE) * 2
 ctbl_m1 <- cbind(ctbl_m1, "p value" = pvals_m1)
 ctbl_m1
 ```
 
-This identify that Education level and Time of residence are the most significant predictors. Higher education is associated with higher odds of having a perception that Andean condors attack livestock more often. Similarly, longer residence slightly increases the odds of having this perceptions. 
+This identify that passing from primary to high school (second contrast, p = 0.0074) and Time of residence (p = 0.026) are the most significant predictors.
 
 ```{r}
-exp(coef(mod_perception)[3]) # estimated coefficient for Education level
-exp(coef(mod_perception)[4]) # estimated coefficient for Time of residence
+exp(coef(mods_perceptions_demogra$edu.t.res)[2]) # estimated coefficient for Education level - Primary to High school
+exp(coef(mods_perceptions_demogra$edu.t.res)[5]) # estimated coefficient for Time of residence
 ```
 
-Each step up in education multiplies the odds of consider the condor harmful by ~2.5, while each additional year of residence time increases these odds by ~3%. The remained predictors has no clear effect.
+Moving from Primary to High school education increases by 5 times the odds of perceiving condors as harmful. Each additional year of residence increases the odds of perceiving condors as harmful by about 2.8%.
 
-Plot the results with a new dataset for predictions
+We can extract the coefficients and the variance-covariance to simulate probabilities with new data for the two variables
 ```{r}
-newdat_m1_ed <- expand.grid(
-  Age = mean(perceptions$Age, na.rm = TRUE),
-  Gender = levels(perceptions$Gender),
-  `Education level` = sort(unique(perceptions$`Education level`)),
-  `Time of residence` = mean(perceptions$`Time of residence`),
-  Occupation = levels(perceptions$Occupation)
+nsim = 1000
+
+# extract coefficients and vcov
+coefs.ed.tr <- c(coef(mods_perceptions_demogra$edu.t.res), # slope
+                 mods_perceptions_demogra$edu.t.res$zeta) # thresholds
+vc.ed.tr <- vcov(mods_perceptions_demogra$edu.t.res)
+vc.safe <- as.matrix(Matrix::nearPD(vc.ed.tr)$mat)
+
+# simulate parameter sets
+sim_coefs <- mvrnorm(nsim, mu = coefs.ed.tr, Sigma = vc.safe)
+```
+
+Generate new data for education level and median time of residence
+```{r}
+newdat_ed <- expand.grid(
+  edu.level = levels(perceptions_Y1$edu.level),
+  t.residence = median(perceptions_Y1$t.residence)
 )
+```
 
-pred_m1_ed <- cbind(newdat_m1_ed, predict(mod_perception, newdat_m1_ed, type = "probs"))
+And new data for timer of residence range, including the levels of education level
+```{r}
+newdat_tr <- expand.grid(
+  edu.level = levels(perceptions_Y1$edu.level),
+  t.residence = seq(min(perceptions_Y1$t.residence),
+                    max(perceptions_Y1$t.residence),
+                    length = 100)
+)
+```
 
-pred_m1_ed_long <- pred_m1_ed %>%
-  pivot_longer(cols = c("0", "1", "2", "3"),
-               names_to = "Category",
-               values_to = "Probability") |>
-  mutate(Category = ifelse(Category == 0, "Never",
-                    ifelse(Category == 1, "Rarely", 
-                    ifelse(Category == 2, "Sometimes", 
-                    ifelse(Category == 3, "Often", NA)))), 
+And predict probabilities for each simulation
+```{r}
+pred_list_ed <- lapply(1:nsim, function(i) {
+  predict_from_params(sim_coefs[i,], newdat_ed, mods_perceptions_demogra$edu.t.res)
+})
+
+pred_array_ed <- simplify2array(pred_list_ed)
+# dim: [ row, category, simulation ] = 5 (as in newdat_ed) x 4 ordinal outcomes (Never, Rarely, Sometimes, Often) x 1000 simulations
+
+# summarizing and CI across simualtions
+med_ed <- apply(pred_array_ed, c(1, 2), median)
+low_ed <- apply(pred_array_ed, c(1, 2), quantile, 0.025)
+upp_ed <- apply(pred_array_ed, c(1, 2), quantile, 0.975)
+
+# dim: [ row, category ] = 5 x 4
+ 
+colnames(med_ed) <- c(paste("med_ed",colnames(med_ed)))
+colnames(low_ed) <- c(paste("low_ed",colnames(low_ed)))
+colnames(upp_ed) <- c(paste("upp_ed",colnames(upp_ed)))
+
+pred_ed <- cbind(newdat_ed, med_ed, low_ed, upp_ed)
+
+# convert to long format
+pred_ed_long <- pred_ed |>
+  pivot_longer(
+    cols = starts_with(c("med_ed", "low_ed", "upp_ed")),
+    names_to = c("stat", "cat"),
+    names_pattern = "(med_ed|low_ed|upp_ed) (\\d)",
+    values_to = "value"
+  ) |>
+  mutate(Category = recode(cat,
+                      "0" = "Never",
+                      "1" = "Rarely",
+                      "2" = "Sometimes",
+                      "3" = "Often"),
          Category = factor(Category,
                               levels = c("Never", 
                                          "Rarely", 
                                          "Sometimes", 
-                                         "Often")))
+                                         "Often"))) |>
+  dplyr::select(-cat) |>
+  pivot_wider(
+    names_from = stat,
+    values_from = value,
+    names_prefix = ""
+  ) |>
+  rename(
+    median = `med_ed`,
+    lower  = `low_ed`,
+    upper  = `upp_ed`
+  )
 
-p_ed <- ggplot(pred_m1_ed_long, aes(x = `Education level`, 
-                         y = Probability, 
+# Time of residency
+
+pred_list_tr <- lapply(1:nsim, function(i) {
+  predict_from_params(sim_coefs[i,], newdat_tr, mods_perceptions_demogra$edu.t.res)
+})
+
+pred_array_tr <- simplify2array(pred_list_tr)
+# dim: [ row, category, simulation ] = 500 (as in newdat_tr) x 4 ordinal outcomes (Never, Rarely, Sometimes, Often) x 1000 simulations
+
+# summarizing and CI across simualtions
+med_tr <- apply(pred_array_tr, c(1, 2), median)
+low_tr <- apply(pred_array_tr, c(1, 2), quantile, 0.025)
+upp_tr <- apply(pred_array_tr, c(1, 2), quantile, 0.975)
+
+# dim: [ row, category ] = 500 x 4
+ 
+colnames(med_tr) <- c(paste("med_tr",colnames(med_tr)))
+colnames(low_tr) <- c(paste("low_tr",colnames(low_tr)))
+colnames(upp_tr) <- c(paste("upp_tr",colnames(upp_tr)))
+
+pred_tr <- cbind(newdat_tr, med_tr, low_tr, upp_tr)
+
+# convert to long format
+pred_tr_long <- pred_tr |>
+  pivot_longer(
+    cols = starts_with(c("med_tr", "low_tr", "upp_tr")),
+    names_to = c("stat", "cat"),
+    names_pattern = "(med_tr|low_tr|upp_tr) (\\d)",
+    values_to = "value"
+  ) |>
+  mutate(Category = recode(cat,
+                      "0" = "Never",
+                      "1" = "Rarely",
+                      "2" = "Sometimes",
+                      "3" = "Often"),
+         Category = factor(Category,
+                              levels = c("Never", 
+                                         "Rarely", 
+                                         "Sometimes", 
+                                         "Often"))) |>
+  dplyr::select(-cat) |>
+  pivot_wider(
+    names_from = stat,
+    values_from = value,
+    names_prefix = ""
+  ) |>
+  rename(
+    median = `med_tr`,
+    lower  = `low_tr`,
+    upper  = `upp_tr`
+  )
+```
+
+And make the figures
+```{r}
+p_ed_ci <- ggplot(pred_ed_long, aes(x = edu.level, 
+                         y = median, 
                          color = Category)) +
-  stat_summary(fun.data = function(z) data.frame(
-    y = median(z),
-    ymin = quantile(z, 0.25),
-    ymax = quantile(z, 0.75)
-  ), geom = "pointrange", alpha = 0.9) +
-  stat_summary(fun = median, geom = "line", size = 1.2, alpha = 0.4) +
+  geom_pointrange(aes(ymin = lower, ymax = upper), position = position_dodge(width = 0.5))+
+  geom_vline(xintercept = 2.5, linetype = "dashed", color = "gray")+
   scale_y_continuous(expand = c(0,0),
                      limits = c(0,1))+
-  scale_x_continuous(expand = c(0,0), 
-                     limits = c(-0.2, 4.2))+
-  scale_fill_manual(values = met.brewer("Manet",4))+
   scale_color_manual(values = met.brewer("Manet",4))+
-  labs(y = "Probability of perceibing condors attacking livestock", 
+  labs(x = "Education level",
+       y = "Perception of condors attacking livestock", 
        tag = "a)")+
   theme_classic()+
-  theme(legend.position = "none")
-p_ed
-```
+  theme(legend.position = "none",
+        axis.text.x = element_text(angle = 25, hjust = 1, vjust = 1))
+p_ed_ci
 
-Variation represents interquartile range (25-75%) given by other demographics in the model (Gender x Occupation), it does not represent confidence intervals nor standard deviations! It is only to include the demographic heterogeneity of the model for perceptions of attack.
-
-We predict also the values for time of residence.
-
-```{r}
-newdat_m1_tr <- expand.grid(
-  Age = mean(perceptions$Age, na.rm = TRUE),
-  Gender = levels(perceptions$Gender),
-  `Education level` = sort(unique(perceptions$`Education level`)),
-  `Time of residence` = sort(unique(perceptions$`Time of residence`)),
-  Occupation = levels(perceptions$Occupation)
-)
-
-pred_m1_tr <- cbind(newdat_m1_tr, predict(mod_perception, newdat_m1_tr, type = "probs"))
-
-pred_m1_tr_long <- pred_m1_tr %>%
-  pivot_longer(cols = c("0", "1", "2", "3"),
-               names_to = "Category",
-               values_to = "Probability") |>
-  mutate(Category = ifelse(Category == 0, "Never",
-                    ifelse(Category == 1, "Rarely", 
-                    ifelse(Category == 2, "Sometimes", 
-                    ifelse(Category == 3, "Often", NA)))), 
-         Category = factor(Category,
-                              levels = c("Never", 
-                                         "Rarely", 
-                                         "Sometimes", 
-                                         "Often")))
-
-p_tr <- ggplot(pred_m1_tr_long, aes(x = `Time of residence`, 
-                         y = Probability, 
-                         fill = Category)) +
+p_tr_ci <- ggplot(pred_tr_long,
+                  aes(x = t.residence,
+                      y = median)) +
   stat_summary(fun.data = function(z) data.frame(
     y = median(z),
     ymin = quantile(z, 0.25),
     ymax = quantile(z, 0.75)
-  ), geom = "ribbon", alpha = 0.1) +
+  ), geom = "ribbon", alpha = 0.1, color = NA, aes(fill = Category)) +
   stat_summary(fun = median, geom = "line", size = 1.2, aes(color = Category)) +
+  geom_point(data = perceptions_Y1, aes(x = t.residence, y = 0), shape = "|", fill = "black")+
   scale_y_continuous(expand = c(0,0),
                      limits = c(0,1))+
   scale_x_continuous(expand = c(0,0), 
                      limits = c(1, 81))+
   scale_fill_manual(values = met.brewer("Manet",4))+
   scale_color_manual(values = met.brewer("Manet",4))+
-  labs(y = "Probability of perceibing condors attacking livestock", 
+  labs(x = "Time of residency (years)",
+       y = "Perception of condors attacking livestock", 
        tag = "b)")+
   theme_classic()+
   theme(legend.position = "none")
-p_tr
+p_tr_ci
 ```
 
 Combine the figures
 
 ```{r}
-(p_ed | p_tr) +
+(p_ed_ci | p_tr_ci) +
   plot_layout(guides = "collect") +
   theme(
     legend.position = "bottom",
     legend.direction = "vertical"
   )
 ggsave(filename = "figs/Fig_Aim1_a_perception.jpg", dpi = 300, 
-       width = 260, height = 125, units = "mm")
+       width = 260, height = 100, units = "mm")
 ```
-![**Perpection of attacts perceived by socio-economics.** Two socio-economic variables more clearly related with the predicted probability of perceibing condors attacking livestock. This probability is ordered by the ordinal perception of condors attacking livestock Never, Rarely, Sometimes, and Often (colors). Variation represents interquartile range (25-75%) given by other demographics in the model (Gender x Occupation), thus, it does not represent confidence intervals, standard deviations, or uncertainty.](figs/Fig_Aim1_a_perception.jpg)
+![**Perpection of attacts perceived by socio-economics.** Two socio-economic variables more clearly related with the predicted probability of perceibing condors attacking livestock (model selected with AICc). This probability is ordered by the ordinal perception of condors attacking livestock Never, Rarely, Sometimes, and Often (colors). Variation represents 95% confidence intervals as a measure of uncertainty after 1000 simulation of the parameters.](figs/Fig_Aim1_a_perception.jpg)
 
-## Perception of harmfulness or mixed compared to beneficial (aim 2)
+## Perception of attack predicted by farm characteristics (1b)
 
+Same ordinal variable (gradually ascending from Never to Often)
+```{r}
+perceptions_Y2 <- perceptions |>
+  mutate(perceptions_1 = ordered(`Do you think condors attack living livestock?`, 
+                          levels = c(0, 1, 2, 3)),
+         t.livestock = ifelse(`Type of livestock`== 0, "0-Cattle",
+                       ifelse(`Type of livestock`==1, "1-Horse",
+                       ifelse(`Type of livestock`==2,"2-Cattle and horse",
+                       ifelse(`Type of livestock`==3, "3-Cattle, horse, and sheep",
+                       ifelse(`Type of livestock`==4, "4-Cattel, horse, and lama",
+                       ifelse(`Type of livestock`==5, "5-Cattle and lama",
+                       ifelse(`Type of livestock`==6, "6-All",
+                       NA))))))),
+         n.cattle = ifelse(is.na(Cattle), 0, Cattle),
+         n.horses = ifelse(is.na(Horse), 0, Horse),
+         n.sheep = ifelse(is.na(Sheep), 0, Sheep),
+         n.lama = ifelse(is.na(Lama), 0, Lama),
+         t.production = ifelse(`Type of cattle production`== 0, "0-Beef",
+                                    ifelse(`Type of cattle production`==1, "1-Dairy",
+                                    ifelse(`Type of cattle production`==2,"2-Brave",
+                                    ifelse(`Type of cattle production`==3, "3-Beef, dairy, and brave",
+                                    ifelse(`Type of cattle production`==4, "4-Beef and dairy",
+                                    ifelse(`Type of cattle production`==5, "5-Dairy and brave",
+                                    NA)))))))
+
+# a list of ordered logistic regression
+mods_perceptions_farm <- list(
+  null = polr(perceptions_1 ~ 1, data = perceptions_Y2, Hess = TRUE),
+  t.livestock  = polr(perceptions_1 ~ t.livestock,  data = perceptions_Y2, Hess = TRUE),
+  n.cattle  = polr(perceptions_1 ~ n.cattle,  data = perceptions_Y2, Hess = TRUE),
+  n.horses   = polr(perceptions_1 ~ n.horses,  data = perceptions_Y2, Hess = TRUE),
+  n.sheep  = polr(perceptions_1 ~ n.sheep,  data = perceptions_Y2, Hess = TRUE),
+  n.lama  = polr(perceptions_1 ~ n.lama,  data = perceptions_Y2, Hess = TRUE),
+  # as farmers include combination of livestock, we can include these additive potential effects
+  n.cattle.horse = polr(perceptions_1 ~ n.cattle + n.horses,  data = perceptions_Y2, Hess = TRUE),
+  n.cattle.lama = polr(perceptions_1 ~ n.cattle + n.lama,  data = perceptions_Y2, Hess = TRUE),
+  t.production   = polr(perceptions_1 ~ t.production,  data = perceptions_Y2, Hess = TRUE),
+  global = polr(perceptions_1 ~ t.livestock + n.cattle + n.horses + n.lama + n.sheep + t.production,  data = perceptions_Y2, Hess = TRUE),
+  global.2 = polr(perceptions_1 ~ n.cattle + n.horses + n.lama + n.sheep + t.production,  data = perceptions_Y2, Hess = TRUE)
+  )
+
+AICcmodavg::aictab(mods_perceptions_farm) # all but t.livestock... cattle?
+```
+
+Getting the p-value for the predictors in the model
+
+```{r}
+ctbl_m2 <- coef(summary(mods_perceptions_farm$n.cattle))
+pvals_m2 <- pnorm(abs(ctbl_m2[, "t value"]), lower.tail = FALSE) * 2
+ctbl_m2 <- cbind(ctbl_m2, "p value" = pvals_m2)
+ctbl_m2
+```
+
+This indicates that although the number of lamas is the best model, that relationship with perception is not clear
+
+```{r}
+exp(coef(mods_perceptions_farm$n.cattle)[1]) # estimated coefficient for number of cattle
+```
+
+Each individual up in number of lamas multiplies the odds of consider the condor harmful by ~1.00569 (0.5%).
+
+Plot the results with a new dataset for predictions
+```{r}
+newdat_m2 <- expand.grid(
+  n.cattle = seq(min(perceptions_Y2$n.cattle, na.rm = TRUE),
+                max(perceptions_Y2$n.cattle, na.rm = TRUE),
+                length = 100)
+)
+
+# simulate data
+nsim = 1000
+
+# extract coefficients and vcov
+coefs.m2 <- c(coef(mods_perceptions_farm$n.cattle), # slope
+                 mods_perceptions_farm$n.cattle$zeta) # thresholds
+vc.m2 <- vcov(mods_perceptions_farm$n.cattle)
+vc.safe.m2 <- as.matrix(Matrix::nearPD(vc.m2)$mat)
+
+# simulate parameter sets
+sim_coefs.m2 <- mvrnorm(nsim, mu = coefs.m2, Sigma = vc.safe.m2)
+
+# predict values from model
+pred_list_m2 <- lapply(1:nsim, function(i) {
+  predict_from_params(sim_coefs.m2[i,], newdat_m2, mods_perceptions_farm$n.cattle)
+})
+
+pred_array_m2 <- simplify2array(pred_list_m2)
+# dim: [ row, category, simulation ] = 100 (as in newdat_m2) x 4 ordinal outcomes (Never, Rarely, Sometimes, Often) x 1000 simulations
+
+# summarizing and CI across simualtions
+med_m2 <- apply(pred_array_m2, c(1, 2), median)
+low_m2 <- apply(pred_array_m2, c(1, 2), quantile, 0.025)
+upp_m2 <- apply(pred_array_m2, c(1, 2), quantile, 0.975)
+
+# dim: [ row, category ] = 100 x 4
+ 
+colnames(med_m2) <- c(paste("med_m2",colnames(med_m2)))
+colnames(low_m2) <- c(paste("low_m2",colnames(low_m2)))
+colnames(upp_m2) <- c(paste("upp_m2",colnames(upp_m2)))
+
+pred_m2 <- cbind(newdat_m2, med_m2, low_m2, upp_m2)
+
+# convert to long format
+pred_m2_long <- pred_m2 |>
+  pivot_longer(
+    cols = starts_with(c("med_m2", "low_m2", "upp_m2")),
+    names_to = c("stat", "cat"),
+    names_pattern = "(med_m2|low_m2|upp_m2) (\\d)",
+    values_to = "value"
+  ) |>
+  mutate(Category = recode(cat,
+                      "0" = "Never",
+                      "1" = "Rarely",
+                      "2" = "Sometimes",
+                      "3" = "Often"),
+         Category = factor(Category,
+                              levels = c("Never", 
+                                         "Rarely", 
+                                         "Sometimes", 
+                                         "Often"))) |>
+  dplyr::select(-cat) |>
+  pivot_wider(
+    names_from = stat,
+    values_from = value,
+    names_prefix = ""
+  ) |>
+  rename(
+    median = `med_m2`,
+    lower  = `low_m2`,
+    upper  = `upp_m2`
+  )
+
+p_cattle <- ggplot(pred_m2_long, aes(x = n.cattle, 
+                         y = median)) + 
+  geom_ribbon(aes(ymin = lower, ymax = upper, fill = Category), color = NA, alpha = 0.1) +
+  geom_line(aes(color = Category), linetype = "dashed") +
+  geom_point(data = perceptions_Y2, aes(x = n.lama, y = 0), shape = "|", color = "black")+
+  scale_y_continuous(expand = c(0,0),
+                     limits = c(0,1))+
+  scale_fill_manual(values = met.brewer("Manet",4))+
+  scale_color_manual(values = met.brewer("Manet",4))+
+  labs(x = "Number of cattle",
+       y = "Perception of condors attacking livestock", 
+       tag = "a)")+
+  theme_classic() +
+  theme(legend.position = "none")
+p_cattle
+```
+
+We can combine this figure with the next sub aim
+
+## Perception of attack predicted by experiences/attitudes (1c)
+
+Same ordinal variable (gradually ascending from Never to Often)
+```{r}
+perceptions_Y3 <- perceptions |>
+  mutate(perceptions_1 = ordered(`Do you think condors attack living livestock?`, 
+                          levels = c(0, 1, 2, 3)),
+         seen.attack = ifelse(`Have you ever seen condors attacking living livestock?` == 0, "1-Yes",
+                       "0-No"),
+         perc.popcha = ifelse(`Do you consider that the Andean condor population in this area?`== 0, "0-Decreased",
+                       ifelse(`Do you consider that the Andean condor population in this area?`== 1, "0-Decreased",
+                       ifelse(`Do you consider that the Andean condor population in this area?`== 2, "1-Remains stable",
+                       ifelse(`Do you consider that the Andean condor population in this area?`== 3, "2-Increased",
+                       ifelse(`Do you consider that the Andean condor population in this area?`== 4, "2-Increased",
+                       NA))))),
+         atti.feeling = ifelse(`What are your feelings towards Andean condors?`== 0, "4-Like a lot",
+                       ifelse(`What are your feelings towards Andean condors?`== 1, "3-Like",
+                       ifelse(`What are your feelings towards Andean condors?`== 2, "2-Indifferent",
+                       ifelse(`What are your feelings towards Andean condors?`== 3, "1-Dislike",
+                       ifelse(`What are your feelings towards Andean condors?`== 4, "0-Dislike a lot",
+                       NA))))),
+         atti.dissap = ifelse(`What would you feel if all of the condors disappeared forever from the region?`== 0, "0-Very happy",
+                       ifelse(`What would you feel if all of the condors disappeared forever from the region?`== 1, "1-Happy",
+                       ifelse(`What would you feel if all of the condors disappeared forever from the region?`== 2, "2-Indifferent",
+                       ifelse(`What would you feel if all of the condors disappeared forever from the region?`== 3, "3-Sad",
+                       ifelse(`What would you feel if all of the condors disappeared forever from the region?`== 4, "4-Very sad",
+                       NA))))),
+         atti.popcha = ifelse(`Would you like the Andean condor population in the National Park and the surrounding area to?`== 0, "0-Decreased",
+                       ifelse(`Would you like the Andean condor population in the National Park and the surrounding area to?`== 1, "0-Decreased",
+                       ifelse(`Would you like the Andean condor population in the National Park and the surrounding area to?`== 2, "1-Remains stable",
+                       ifelse(`Would you like the Andean condor population in the National Park and the surrounding area to?`== 3, "2-Increased",
+                       ifelse(`Would you like the Andean condor population in the National Park and the surrounding area to?`== 4, "2-Increased",
+                       NA))))),
+         )
+
+# a list of ordered logistic regression
+mods_perceptions_expatt <- list(
+  null = polr(perceptions_1 ~ 1, data = perceptions_Y3, Hess = TRUE),
+  seen.attack = polr(perceptions_1 ~ seen.attack, data = perceptions_Y3, Hess = TRUE),
+  perc.popcha = polr(perceptions_1 ~ perc.popcha, data = perceptions_Y3, Hess = TRUE),
+  atti.feeling = polr(perceptions_1 ~ atti.feeling, data = perceptions_Y3, Hess = TRUE),
+  atti.dissap = polr(perceptions_1 ~ atti.dissap, data = perceptions_Y3, Hess = TRUE),
+  atti.popcha = polr(perceptions_1 ~ atti.popcha, data = perceptions_Y3, Hess = TRUE),
+  global = polr(perceptions_1 ~ seen.attack + perc.popcha + atti.feeling + atti.dissap + atti.popcha, data = perceptions_Y3, Hess = TRUE)
+    )
+
+AICcmodavg::aictab(mods_perceptions_expatt) # seen.attack and null
+```
+
+Getting the p-value for the predictors in the model
+
+```{r}
+ctbl_m3 <- coef(summary(mods_perceptions_expatt$seen.attack))
+pvals_m3 <- pnorm(abs(ctbl_m3[, "t value"]), lower.tail = FALSE) * 2
+ctbl_m3 <- cbind(ctbl_m3, "p value" = pvals_m3)
+ctbl_m3
+```
+
+This indicates that although have seen an attack is the best model, that relationship with perception is not clear
+
+```{r}
+exp(coef(mods_perceptions_expatt$seen.attack)[1]) # estimated coefficient for number of lamas
+```
+
+Have seen an attack by condor multiplies the odds of consider the condor harmful by 2 times.
+
+Plot the results with a new dataset for predictions
+```{r}
+newdat_m3 <- expand.grid(
+  seen.attack = levels(as.factor(perceptions_Y3$seen.attack))
+)
+
+# simulate data
+nsim = 1000
+
+# extract coefficients and vcov
+coefs.m3 <- c(coef(mods_perceptions_expatt$seen.attack), # slope
+                 mods_perceptions_expatt$seen.attack$zeta) # thresholds
+vc.m3 <- vcov(mods_perceptions_expatt$seen.attack)
+vc.safe.m3 <- as.matrix(Matrix::nearPD(vc.m3)$mat)
+
+# simulate parameter sets
+sim_coefs.m3 <- mvrnorm(nsim, mu = coefs.m3, Sigma = vc.safe.m3)
+
+# predict values from model
+pred_list_m3 <- lapply(1:nsim, function(i) {
+  predict_from_params(sim_coefs.m3[i,], newdat_m3, mods_perceptions_expatt$seen.attack)
+})
+
+pred_array_m3 <- simplify2array(pred_list_m3)
+# dim: [ row, category, simulation ] = 100 (as in newdat_m2) x 4 ordinal outcomes (Never, Rarely, Sometimes, Often) x 1000 simulations
+
+# summarizing and CI across simualtions
+med_m3 <- apply(pred_array_m3, c(1, 2), median)
+low_m3 <- apply(pred_array_m3, c(1, 2), quantile, 0.025)
+upp_m3 <- apply(pred_array_m3, c(1, 2), quantile, 0.975)
+
+# dim: [ row, category ] = 100 x 4
+ 
+colnames(med_m3) <- c(paste("med_m3",colnames(med_m3)))
+colnames(low_m3) <- c(paste("low_m3",colnames(low_m3)))
+colnames(upp_m3) <- c(paste("upp_m3",colnames(upp_m3)))
+
+pred_m3 <- cbind(newdat_m3, med_m3, low_m3, upp_m3)
+
+# convert to long format
+pred_m3_long <- pred_m3 |>
+  pivot_longer(
+    cols = starts_with(c("med_m3", "low_m3", "upp_m3")),
+    names_to = c("stat", "cat"),
+    names_pattern = "(med_m3|low_m3|upp_m3) (\\d)",
+    values_to = "value"
+  ) |>
+  mutate(Category = recode(cat,
+                      "0" = "Never",
+                      "1" = "Rarely",
+                      "2" = "Sometimes",
+                      "3" = "Often"),
+         Category = factor(Category,
+                              levels = c("Never", 
+                                         "Rarely", 
+                                         "Sometimes", 
+                                         "Often"))) |>
+  dplyr::select(-cat) |>
+  pivot_wider(
+    names_from = stat,
+    values_from = value,
+    names_prefix = ""
+  ) |>
+  rename(
+    median = `med_m3`,
+    lower  = `low_m3`,
+    upper  = `upp_m3`
+  )
+
+p_seen <- ggplot(pred_m3_long, aes(x = seen.attack, 
+                         y = median, 
+                         color = Category)) +
+  geom_pointrange(aes(ymin = lower, ymax = upper), position = position_dodge(width = 0.5))+
+  scale_y_continuous(expand = c(0,0),
+                     limits = c(0,1))+
+  scale_color_manual(values = met.brewer("Manet",4))+
+  labs(x = "Have the farmers seen an attack?",
+       y = "Perception of condors attacking livestock", 
+       tag = "b)")+
+  theme_classic()+
+  theme(legend.position = "none")
+p_seen
+```
+
+Combine the figures
+
+```{r}
+(p_cattle | p_seen) +
+  plot_layout(guides = "collect") +
+  theme(
+    legend.position = "bottom",
+    legend.direction = "vertical"
+  )
+ggsave(filename = "figs/Fig_Aim1_b_c_perception.jpg", dpi = 300, 
+       width = 260, height = 100, units = "mm")
+```
+![**Perpection of attacts perceived by farm characteristics and experiences.** No clear relationship of variables related with the predicted probability of perceibing condors attacking livestock (models selected with AICc). This probability is ordered by the ordinal perception of condors attacking livestock Never, Rarely, Sometimes, and Often (colors). Variation represents 95% confidence intervals as a measure of uncertainty after 1000 simulation of the parameters. Two predictors selected to illustrate this unclear relationship, number of cattle for farm characteristics (a), and have seen an attack by farmers (b)](figs/Fig_Aim1_b_c_perception.jpg)
+
+
+# Perception of harmfulness or mixed compared to beneficial (2)
+
+Farmers perceive the Andean condor as beneficial, harmfulness, or a combination (mixed perception). However, these perceptions vary with socio-demographic, farm characteristics, and experience/attitudes
+
+## Perception of harmfulness or mixed compared to beneficial predicted by socio-demographic (2a)
 This is a nominal outcome, without an specific order (Beneficial, Harmful, Both)
 
 ```{r}
-perceptions_b <- perceptions |>
+perceptions_Y4 <- perceptions |>
   mutate(Y_benefit = ifelse(`Could you indicate if the Andean condor is beneficial and/or harmful to you?` == 0, "Harmful",
                      ifelse(`Could you indicate if the Andean condor is beneficial and/or harmful to you?` == 1, "Beneficial",
                      ifelse(`Could you indicate if the Andean condor is beneficial and/or harmful to you?` == 2, "Both",
@@ -378,75 +1194,440 @@ perceptions_b <- perceptions |>
                             levels = c("Beneficial",
                                        "Harmful",
                                        "Both")),
-         seen_attack = ifelse(`Have you ever seen condors attacking living livestock?`== 0, "Yes",
-                    "No"),
-         seen_attack = factor(seen_attack, 
-                           levels = c("No",
-                                      "Yes")))
+         site = as.factor(ifelse(`Paddock site` == 0, "Antisana",
+                       "Llanganates")),
+         gender = as.factor(ifelse(Gender == 0, "Male", "Female")),
+         age = Age,
+         edu.level = factor(`Education level`, 
+                       levels = 0:4, 
+                       labels = c("0-None","1-Prim","2-High","3-Tech","4-Univ")),
+         t.residence = `Time of residence`,
+         occupation = as.factor(ifelse(Occupation == 0, "Employer","Owner")))
 
+# sequencial contrast for education level
+contrasts(perceptions_Y4$edu.level) <- MASS::contr.sdif(5)
 
-mod_benefit <- multinom(
-  Y_benefit ~ Age + Gender + `Education level` + 
-    `Time of residence` + Occupation + seen_attack,
-  data = perceptions_b
-)
+# a list of ordered logistic regression
+mods_benefit_demogra <- list(
+  null =  multinom(Y_benefit ~ 1,  data = perceptions_Y4),
+  site  = multinom(Y_benefit ~ site,  data = perceptions_Y4),
+  gender  = multinom(Y_benefit ~ gender,  data = perceptions_Y4),
+  age   = multinom(Y_benefit ~ age,  data = perceptions_Y4),
+  edu.level  = multinom(Y_benefit ~ edu.level,  data = perceptions_Y4),
+  t.residence  = multinom(Y_benefit ~ t.residence,  data = perceptions_Y4),
+  occupation   = multinom(Y_benefit ~ occupation,  data = perceptions_Y4),
+  global = multinom(Y_benefit ~ site + gender + age + edu.level + t.residence + occupation, data = perceptions_Y4), 
+  # after two models within deltaAICc < 2
+  site.tres = multinom(Y_benefit ~ site + t.residence, data = perceptions_Y4),
+  site.tres.int = multinom(Y_benefit ~ site + t.residence + site*t.residence, data = perceptions_Y4)
+  )
 
-summary(mod_benefit)
+AICcmodavg::aictab(mods_benefit_demogra) # site, t.residence, and null; when adding
+
+summary(mods_benefit_demogra$site.tres)
 ```
 
 To get the p-values
 ```{r}
-z_benef <- summary(mod_benefit)$coefficients / summary(mod_benefit)$standard.errors
+z_benef <- summary(mods_benefit_demogra$site.tres)$coefficients / summary(mods_benefit_demogra$site.tres)$standard.errors
 pvals_benef <- 2 * (1 - pnorm(abs(z_benef)))
 pvals_benef
 ```
 
-Our research question for the model was "What makes farmers perceive condors as harmful or both harmful and beneficial, instead of only beneficial?" These p-values identify immediately that farmers who have seen condors attacking livestock are overwhelmingly more likely to classify condors as harmful or both (harmful and beneficial), compared to only beneficial. This aligns with the contingency table of the perception of benefit and seen condors attacking livestock
-```{r}
-table(perceptions_b$seen_attack, perceptions_b$Y_benefit)
-```
+Our research question for the model was "What socio-demographic factor makes farmers perceive condors as harmful or both harmful and beneficial, instead of only beneficial?" Farmers who have lived longer in the area are more likely to report a mixed perception (both beneficial and harmful) compared to beneficial. Although farmers in Llanganates tend to be more likely to perceive the condor as harmful than beneficial, the uncertainty is too large and not statistically supported.
 
-The unique variable associated with this perception of benefit/harmfulness (or both) is having seen condors attacking livestock (marginal effect of Time of residence and Education level when comparing Beneficial-Both)
+Plot the results with a new dataset for predictions
 ```{r}
-newdat_m2_ben <- expand.grid(
-  Age = mean(perceptions_b$Age, na.rm = TRUE),
-  Gender = levels(perceptions_b$Gender),
-  `Education level` = sort(unique(perceptions_b$`Education level`)),
-  `Time of residence` = sort(unique(perceptions_b$`Time of residence`)),
-  Occupation = levels(perceptions_b$Occupation),
-  seen_attack = levels(perceptions_b$seen_attack)
+newdat_m4 <- expand.grid(
+  site = levels(as.factor(perceptions_Y4$site)),
+  t.residence = seq(min(perceptions_Y4$t.residence),
+                    max(perceptions_Y4$t.residence),
+                    length = 100)
 )
 
-pred_m2_ben <- cbind(newdat_m2_ben, predict(mod_benefit, newdat_m2_ben, type = "probs"))
+# simulate data
+nsim = 1000
 
-pred_m2_ben_long <- pred_m2_ben %>%
-  pivot_longer(cols = c("Beneficial", "Harmful", "Both"),
-               names_to = "Category",
-               values_to = "Probability")
+# extract coefficients and vcov
+coefs.m4 <- as.vector(t(coef(mods_benefit_demogra$site.tres)))
+vc.m4 <- vcov(mods_benefit_demogra$site.tres)
+vc.safe.m4 <- as.matrix(Matrix::nearPD(vc.m4)$mat)
 
-ggplot(pred_m2_ben_long, aes(x = seen_attack, 
-                         y = Probability, 
-                         color = Category)) +
-  stat_summary(fun.data = function(z) data.frame(
-    y = median(z),
-    ymin = quantile(z, 0.25),
-    ymax = quantile(z, 0.75)
-  ), geom = "pointrange", alpha = 0.9, position = position_dodge(width = 0.5)) +
-  scale_y_continuous(expand = c(0,0),
-                     limits = c(0,1))+
+# simulate parameter sets
+sim_coefs.m4 <- mvrnorm(nsim, mu = coefs.m4, Sigma = vc.safe.m4)
+
+# predict values from model
+pred_list_m4 <- lapply(1:nsim, function(i) {
+  predict_multinom_params(sim_coefs.m4[i,], newdat_m4, mods_benefit_demogra$site.tres)
+})
+
+pred_array_m4 <- simplify2array(pred_list_m4)
+# dim: [ row, category, simulation ] = 200 (as in newdat_m4) x 3 levels (Beneficial, Both, harmful) x 1000 simulations
+
+# summarizing and CI across simualtions
+med_m4 <- apply(pred_array_m4, c(1, 2), median)
+low_m4 <- apply(pred_array_m4, c(1, 2), quantile, 0.025)
+upp_m4 <- apply(pred_array_m4, c(1, 2), quantile, 0.975)
+
+# dim: [ row, category ] = 200 x 3
+ 
+colnames(med_m4) <- c(paste("med_m4",colnames(med_m4)))
+colnames(low_m4) <- c(paste("low_m4",colnames(low_m4)))
+colnames(upp_m4) <- c(paste("upp_m4",colnames(upp_m4)))
+
+pred_m4 <- cbind(newdat_m4, med_m4, low_m4, upp_m4)
+
+# convert to long format
+pred_m4_long <- pred_m4 |>
+  pivot_longer(
+    cols = starts_with(c("med_m4", "low_m4", "upp_m4")),
+    names_to = c("stat", "Category"),
+    names_pattern = "(med_m4|low_m4|upp_m4) (.*)",
+    values_to = "value"
+  ) |>
+  pivot_wider(
+    names_from = stat,
+    values_from = value
+  ) |>
+  rename(
+    median = med_m4,
+    lower  = low_m4,
+    upper  = upp_m4
+  ) |>
+  mutate(
+    Category = factor(Category,
+                      levels = c("Beneficial", "Harmful", "Both"))
+  )
+
+# visually representing the results of the model
+linetypes_m4 <- c(
+  "Beneficial" = "dashed",
+  "Harmful"    = "dashed",
+  "Both"       = "solid"
+)
+
+
+per_m4 <- ggplot(pred_m4_long,
+       aes(x = t.residence, y = median)) +
+  facet_wrap(~site)+
+  geom_ribbon(aes(ymin = lower, ymax = upper, fill = Category), alpha = 0.1)+
+  geom_line(aes(color = Category, linetype = Category))+
+  geom_point(data = perceptions_Y4, aes(x = t.residence, y = 0), shape = "|", fill = "black")+
+  scale_y_continuous(limits = c(0,1), expand = c(0,0)) +
+  scale_linetype_manual(values = linetypes_m4) +
   scale_color_manual(values = met.brewer("Java"))+
-  labs(y = "Probability of perceibing condors as beneficial/harmful",
-       x = "Have the farmers ever seen condors attacking livestock?")+
-  theme_classic()+
-  theme(legend.position = "bottom")
-ggsave(filename = "figs/Fig_Aim2_perception_beneficial_harmful.jpg", dpi = 300, 
-       width = 150, height = 125, units = "mm")
+  scale_fill_manual(values = met.brewer("Java"))+
+  labs(x = "Time of residence",
+       y = "Perception of condors benefit",
+       tag = "a)") +
+  theme_classic() +
+  theme(legend.position = "none")
+per_m4
 ```
-![**Perpection of harmfulness or mixed compared to beneficial perception.** Farmers who have seen condors attacking livestock are more likely to classify condors as harmful or harmfull and beneficial, compared to classify them only as beneficial.](figs/Fig_Aim2_perception_beneficial_harmful.jpg)
 
-# Ecological Vulnerability Hypothesis (aim 3)
+## Perception of harmfulness or mixed compared to beneficial predicted by farm characteristics (2b)
+This is a nominal outcome, without an specific order (Beneficial, Harmful, Both)
 
-Hypothesis: Aggressive interactions of condors towards livestock are driven by livestock vulnerability and food availability, not by a shift in condor behavior from scavenger to predator. Thus, perceived impacts are likely to exceed those supported by empirical evidence.
+```{r}
+perceptions_Y5 <- perceptions |>
+  mutate(Y_benefit = ifelse(`Could you indicate if the Andean condor is beneficial and/or harmful to you?` == 0, "Harmful",
+                     ifelse(`Could you indicate if the Andean condor is beneficial and/or harmful to you?` == 1, "Beneficial",
+                     ifelse(`Could you indicate if the Andean condor is beneficial and/or harmful to you?` == 2, "Both",
+                            NA))),
+         Y_benefit = factor(Y_benefit, 
+                            levels = c("Beneficial",
+                                       "Harmful",
+                                       "Both")),
+         t.livestock = factor(ifelse(`Type of livestock`== 0, "0-Cattle",
+                       ifelse(`Type of livestock`==1, "1-Other",
+                       ifelse(`Type of livestock`==2,"1-Other",
+                       ifelse(`Type of livestock`==3, "1-Other",
+                       ifelse(`Type of livestock`==4, "1-Other",
+                       ifelse(`Type of livestock`==5, "1-Other",
+                       ifelse(`Type of livestock`==6, "1-Other",
+                       NA)))))))),
+         n.cattle = ifelse(is.na(Cattle), 0, Cattle),
+         n.horses = ifelse(is.na(Horse), 0, Horse),
+         n.sheep = ifelse(is.na(Sheep), 0, Sheep),
+         n.lama = ifelse(is.na(Lama), 0, Lama),
+         t.production = factor(ifelse(`Type of cattle production`== 0, "0-Beef",
+                                    ifelse(`Type of cattle production`==1, "1-Dairy",
+                                    ifelse(`Type of cattle production`==2,"2-Brave",
+                                    ifelse(`Type of cattle production`==3, "3-Multiple",
+                                    ifelse(`Type of cattle production`==4, "3-Multiple",
+                                    ifelse(`Type of cattle production`==5, "3-Multiple",
+                                    NA))))))))
+
+# a list of ordered logistic regression
+mods_benefit_farm <- list(
+  null =  multinom(Y_benefit ~ 1,  data = perceptions_Y5),
+  t.livestock  = multinom(Y_benefit ~ t.livestock,  data = perceptions_Y5),
+  n.cattle  = multinom(Y_benefit ~ n.cattle,  data = perceptions_Y5),
+  n.horses   = multinom(Y_benefit ~ n.horses,  data = perceptions_Y5),
+  n.sheep  = multinom(Y_benefit ~ n.sheep,  data = perceptions_Y5),
+  n.lama  = multinom(Y_benefit ~ n.lama,  data = perceptions_Y5),
+  # as farmers include combination of livestock, we can include these additive potential effects
+  n.cattle.horse = multinom(Y_benefit ~ n.cattle + n.horses,  data = perceptions_Y5),
+  n.cattle.horse.sheep = multinom(Y_benefit ~ n.cattle + n.horses + n.sheep,  data = perceptions_Y5),
+  n.cattle.lama = multinom(Y_benefit ~ n.cattle + n.lama,  data = perceptions_Y5),
+  t.production   = multinom(Y_benefit ~ t.production,  data = perceptions_Y5),
+  global = multinom(Y_benefit ~ t.livestock+n.cattle+n.horses+ t.production,  
+                    data = perceptions_Y5)
+  )
+
+AICcmodavg::aictab(mods_benefit_farm) # n.cattle.horse, n. horses, n. sheeps
+
+summary(mods_benefit_farm$n.horses)
+```
+
+To get the p-values
+```{r}
+z_benef_farm <- summary(mods_benefit_farm$n.horses)$coefficients / summary(mods_benefit_farm$n.horses)$standard.errors
+pvals_benef_farm <- 2 * (1 - pnorm(abs(z_benef_farm)))
+pvals_benef_farm
+```
+
+Our research question for the model was "What farm characteristic predictor makes farmers perceive condors as harmful or both harmful and beneficial, instead of only beneficial?" Many models are equally possible. For simplicity, we can pickup the number of horses, which had the highest weight.
+
+Plot the results with a new dataset for predictions using the covariate.
+```{r}
+newdat_m5 <- expand.grid(
+  n.horses= seq(min(perceptions_Y5$n.horses),
+                    max(perceptions_Y5$n.horses),
+                    length = 100)
+  )
+
+# simulate data
+nsim = 1000
+
+# extract coefficients and vcov
+coefs.m5 <- as.vector(t(coef(mods_benefit_farm$n.horses)))
+vc.m5 <- vcov(mods_benefit_farm$n.horses)
+vc.safe.m5 <- as.matrix(Matrix::nearPD(vc.m5)$mat)
+
+# simulate parameter sets
+sim_coefs.m5 <- mvrnorm(nsim, mu = coefs.m5, Sigma = vc.safe.m5)
+
+# predict values from model
+pred_list_m5 <- lapply(1:nsim, function(i) {
+  predict_multinom_params(sim_coefs.m5[i,], newdat_m5, mods_benefit_farm$n.horses)
+})
+
+pred_array_m5 <- simplify2array(pred_list_m5)
+
+# summarizing and CI across simualtions
+med_m5 <- apply(pred_array_m5, c(1, 2), median)
+low_m5 <- apply(pred_array_m5, c(1, 2), quantile, 0.025)
+upp_m5 <- apply(pred_array_m5, c(1, 2), quantile, 0.975)
+
+colnames(med_m5) <- c(paste("med_m5",colnames(med_m5)))
+colnames(low_m5) <- c(paste("low_m5",colnames(low_m5)))
+colnames(upp_m5) <- c(paste("upp_m5",colnames(upp_m5)))
+
+pred_m5 <- cbind(newdat_m5, med_m5, low_m5, upp_m5)
+
+# convert to long format
+pred_m5_long <- pred_m5 |>
+  pivot_longer(
+    cols = starts_with(c("med_m5", "low_m5", "upp_m5")),
+    names_to = c("stat", "Category"),
+    names_pattern = "(med_m5|low_m5|upp_m5) (.*)",
+    values_to = "value"
+  ) |>
+  pivot_wider(
+    names_from = stat,
+    values_from = value
+  ) |>
+  rename(
+    median = med_m5,
+    lower  = low_m5,
+    upper  = upp_m5
+  ) |>
+  mutate(
+    Category = factor(Category,
+                      levels = c("Beneficial", "Harmful", "Both"))
+  )
+
+
+per_m5 <- ggplot(pred_m5_long,
+       aes(x = n.horses, y = median)) +
+  geom_ribbon(aes(ymin = lower, ymax = upper, fill = Category), alpha = 0.1)+
+  geom_line(aes(color = Category), linetype = "dashed")+
+  geom_point(data = perceptions_Y5, aes(x = n.horses, y = 0), shape = "|", fill = "black")+
+  scale_x_log10()+
+  scale_y_continuous(limits = c(0,1), expand = c(0,0)) +
+  scale_color_manual(values = met.brewer("Java"))+
+  scale_fill_manual(values = met.brewer("Java"))+
+  labs(x = expression(log[10]~" Number of horses"),
+       y = "Perception of condors benefit",
+       tag = "b)") +
+  theme_classic() +
+  theme(legend.position = "none")
+per_m5
+```
+
+## Perception of harmfulness or mixed compared to beneficial predicted by experiences/attitudes (2c)
+This is a nominal outcome, without an specific order (Beneficial, Harmful, Both)
+
+```{r}
+perceptions_Y6 <- perceptions |>
+  mutate(Y_benefit = ifelse(`Could you indicate if the Andean condor is beneficial and/or harmful to you?` == 0, "Harmful",
+                     ifelse(`Could you indicate if the Andean condor is beneficial and/or harmful to you?` == 1, "Beneficial",
+                     ifelse(`Could you indicate if the Andean condor is beneficial and/or harmful to you?` == 2, "Both",
+                            NA))),
+         Y_benefit = factor(Y_benefit, 
+                            levels = c("Beneficial",
+                                       "Harmful",
+                                       "Both")),
+         seen.attack = ifelse(`Have you ever seen condors attacking living livestock?` == 0, "1-Yes",
+                       "0-No"),
+         perc.popcha = ifelse(`Do you consider that the Andean condor population in this area?`== 0, "0-Decreased",
+                       ifelse(`Do you consider that the Andean condor population in this area?`== 1, "0-Decreased",
+                       ifelse(`Do you consider that the Andean condor population in this area?`== 2, "1-Remains stable",
+                       ifelse(`Do you consider that the Andean condor population in this area?`== 3, "2-Increased",
+                       ifelse(`Do you consider that the Andean condor population in this area?`== 4, "2-Increased",
+                       NA))))),
+         atti.feeling = ifelse(`What are your feelings towards Andean condors?`== 0, "4-Like a lot",
+                       ifelse(`What are your feelings towards Andean condors?`== 1, "3-Like",
+                       ifelse(`What are your feelings towards Andean condors?`== 2, "2-Indifferent",
+                       ifelse(`What are your feelings towards Andean condors?`== 3, "1-Dislike",
+                       ifelse(`What are your feelings towards Andean condors?`== 4, "0-Dislike a lot",
+                       NA))))),
+         atti.dissap = ifelse(`What would you feel if all of the condors disappeared forever from the region?`== 0, "0-Very happy",
+                       ifelse(`What would you feel if all of the condors disappeared forever from the region?`== 1, "1-Happy",
+                       ifelse(`What would you feel if all of the condors disappeared forever from the region?`== 2, "2-Indifferent",
+                       ifelse(`What would you feel if all of the condors disappeared forever from the region?`== 3, "3-Sad",
+                       ifelse(`What would you feel if all of the condors disappeared forever from the region?`== 4, "4-Very sad",
+                       NA))))),
+         atti.popcha = ifelse(`Would you like the Andean condor population in the National Park and the surrounding area to?`== 0, "0-Decreased",
+                       ifelse(`Would you like the Andean condor population in the National Park and the surrounding area to?`== 1, "0-Decreased",
+                       ifelse(`Would you like the Andean condor population in the National Park and the surrounding area to?`== 2, "1-Remains stable",
+                       ifelse(`Would you like the Andean condor population in the National Park and the surrounding area to?`== 3, "2-Increased",
+                       ifelse(`Would you like the Andean condor population in the National Park and the surrounding area to?`== 4, "2-Increased",
+                       NA))))),
+         perc.attack = ifelse(`Do you think condors attack living livestock?` == 0, "0-Never",
+                           ifelse(`Do you think condors attack living livestock?` == 1, "1-Rarely",
+                           ifelse(`Do you think condors attack living livestock?` == 2, "2-Sometimes",
+                           ifelse(`Do you think condors attack living livestock?` == 3, "3-Often",NA)))))
+
+# a list of ordered logistic regression
+mods_benefit_att <- list(
+  null =  multinom(Y_benefit ~ 1,  data = perceptions_Y6),
+  seen.attack = multinom(Y_benefit ~ seen.attack, data = perceptions_Y6),
+  perc.popcha = multinom(Y_benefit ~ perc.popcha, data = perceptions_Y6),
+  atti.feeling = multinom(Y_benefit ~ atti.feeling, data = perceptions_Y6),
+  atti.dissap = multinom(Y_benefit ~ atti.dissap, data = perceptions_Y6),
+  atti.popcha = multinom(Y_benefit ~ atti.popcha, data = perceptions_Y6),
+  perc.attack = multinom(Y_benefit ~ perc.attack, data = perceptions_Y6),
+  global = multinom(Y_benefit ~ seen.attack + perc.popcha + atti.feeling + atti.dissap + atti.popcha + perc.attack, data = perceptions_Y6)
+  )
+
+AICcmodavg::aictab(mods_benefit_att) # perc.attack
+
+summary(mods_benefit_att$perc.attack)
+```
+
+To get the p-values
+```{r}
+z_benef_att <- summary(mods_benefit_att$perc.attack)$coefficients / summary(mods_benefit_att$perc.attack)$standard.errors
+pvals_benef_att <- 2 * (1 - pnorm(abs(z_benef_att)))
+pvals_benef_att
+```
+
+Our research question for the model was "What experience/attitude predictor makes farmers perceive condors as harmful or both harmful and beneficial, instead of only beneficial?" Farmers who think condors attack livestock more often are not more likely to say condors are harmful or have a mixed perception. 
+
+Plot the results with a new dataset for predictions using the covariate.
+```{r}
+newdat_m6 <- expand.grid(
+  perc.attack= levels(factor(perceptions_Y6$perc.attack))
+  )
+
+# simulate data
+nsim = 1000
+
+# extract coefficients and vcov
+coefs.m6 <- as.vector(t(coef(mods_benefit_att$perc.attack)))
+vc.m6 <- vcov(mods_benefit_att$perc.attack)
+vc.safe.m6 <- as.matrix(Matrix::nearPD(vc.m6)$mat)
+
+# simulate parameter sets
+sim_coefs.m6 <- mvrnorm(nsim, mu = coefs.m6, Sigma = vc.safe.m6)
+
+# predict values from model
+pred_list_m6 <- lapply(1:nsim, function(i) {
+  predict_multinom_params(sim_coefs.m6[i,], newdat_m6, mods_benefit_att$perc.attack)
+})
+
+pred_array_m6 <- simplify2array(pred_list_m6)
+
+# summarizing and CI across simualtions
+med_m6 <- apply(pred_array_m6, c(1, 2), median)
+low_m6 <- apply(pred_array_m6, c(1, 2), quantile, 0.025)
+upp_m6 <- apply(pred_array_m6, c(1, 2), quantile, 0.975)
+
+colnames(med_m6) <- c(paste("med_m6",colnames(med_m6)))
+colnames(low_m6) <- c(paste("low_m6",colnames(low_m6)))
+colnames(upp_m6) <- c(paste("upp_m6",colnames(upp_m6)))
+
+pred_m6 <- cbind(newdat_m6, med_m6, low_m6, upp_m6)
+
+# convert to long format
+pred_m6_long <- pred_m6 |>
+  pivot_longer(
+    cols = starts_with(c("med_m6", "low_m6", "upp_m6")),
+    names_to = c("stat", "Category"),
+    names_pattern = "(med_m6|low_m6|upp_m6) (.*)",
+    values_to = "value"
+  ) |>
+  pivot_wider(
+    names_from = stat,
+    values_from = value
+  ) |>
+  rename(
+    median = med_m6,
+    lower  = low_m6,
+    upper  = upp_m6
+  ) |>
+  mutate(
+    Category = factor(Category,
+                      levels = c("Beneficial", "Harmful", "Both"))
+  )
+
+
+per_m6 <- ggplot(pred_m6_long,
+       aes(x = perc.attack, y = median)) +
+  geom_pointrange(aes(ymin = lower, ymax = upper, color = Category), 
+                  position = position_dodge(width = 0.5))+
+  scale_y_continuous(limits = c(0,1), expand = c(0,0)) +
+  scale_color_manual(values = met.brewer("Java"))+
+  scale_fill_manual(values = met.brewer("Java"))+
+  labs(x = "Perception of condors attacking livestock",
+       y = "Perception of condors benefit",
+       tag = "c)") +
+  theme_classic() +
+  theme(legend.position = "none")
+per_m6
+```
+
+Combine the figures
+
+```{r}
+(per_m4 | per_m5 | per_m6) +
+  plot_layout(guides = "collect") +
+  theme(
+    legend.position = "bottom",
+    legend.direction = "vertical"
+  )
+ggsave(filename = "figs/Fig_Aim2_a_b_c_perception.jpg", dpi = 300, 
+       width = 360, height = 100, units = "mm")
+```
+![**Perpection of condors benefits for socio-demographic, farm characteristics, and experiences or attitudes vary little.** The probability of perceived condors as beneficila, harmful, or both varied little across different factors (models selected with AICc), regardless of socio-demographics (a), farm characteristics (b; see log scale, only for visualization purposes), or experiences (c). Variation represents 95% confidence intervals as a measure of uncertainty after 1000 simulation of the parameters.](figs/Fig_Aim2_a_b_c_perception.jpg)
+
+
+
+# Field observations of condor attacking livestock (3)
+
+Field observations will reveal little evidence of condor predation on live livestock. As such, perceived impacts are likely to exceed those supported by empirical evidence ([Duriez *et al.* 2019](doi:10.1017/S0959270918000345), [Ballejo *et al.* 2020](https://doi.org/10.1016/j.biocon.2020.108627)).
 
 The response variable is an multinomial ordinal (discrete categorical) of ascending severity scale:
 
@@ -454,7 +1635,7 @@ The response variable is an multinomial ordinal (discrete categorical) of ascend
 table(interactions$Interactions)
 ```
 
-Although this type of data could be analyzed with ordinal regression, providing better results than with traditional count-based models (Poisson, Negative Binomial, Zero-Inflated Poisson, or Zero-Inflated Negative Binomial; see [Valle *et al.* 2019](https://www.nature.com/articles/s41598-019-39377-x)), the small sample size and sparseness of the data make the model to no converge (preliminary analyses not showed). We can group in a binomial response (presence/absence of interaction event), but identifying the "severity" of the interaction with colors in a figure. Let's explorellj the potential responses.
+Although this type of data could be analyzed with ordinal regression, providing better results than with traditional count-based models (Poisson, Negative Binomial, Zero-Inflated Poisson, or Zero-Inflated Negative Binomial; see [Valle *et al.* 2019](https://www.nature.com/articles/s41598-019-39377-x)), the small sample size and sparseness of the data make the model to no converge (preliminary analyses not showed). We can group in a binomial response (presence/absence of interaction event), but identifying the "severity" of the interaction with colors in the figure. Let's explore the potential responses.
 
 ```{r warning=FALSE}
 interactions$Interactions_f <- factor(
@@ -484,50 +1665,76 @@ ggplot(interactions_long, aes(x = Value, y = as.integer(Interactions_b))) +
   coord_cartesian(ylim = c(0,1))
 ```
 
-This LOESS trend by default in `ggplot` might help us to identify the potential models, discarding the number of lamas and sheeps. 
+This LOESS trend by default in `ggplot` might help us to identify the potential models, discarding the number of lamas and sheeps. Nonetheless, we can compare the different models with AICc.
 
 ```{r}
-mod_int_log <- glm(
-  Interactions_b ~ N_Condors + N_deers + I(N_deers^2) + N_Cattle + I(N_deers^2) + N_Horses + I(N_Horses^2),
-  data = interactions,
-  family = binomial
+mods_int_log <- list(
+  null = glm(Interactions_b ~ 1, data = interactions, family = binomial),
+  cattle = glm(Interactions_b ~ N_Cattle, data = interactions, family = binomial),
+  condors = glm(Interactions_b ~ N_Condors, data = interactions, family = binomial),
+  deers = glm(Interactions_b ~ N_deers, data = interactions, family = binomial),
+  horses = glm(Interactions_b ~ N_Horses, data = interactions, family = binomial),
+  lamas = glm(Interactions_b ~ N_Lamas, data = interactions, family = binomial),
+  sheeps = glm(Interactions_b ~ N_Sheeps, data = interactions, family = binomial),
+  # quadratic of cattle, deers, horses
+  cattle.2 = glm(Interactions_b ~ N_Cattle + I(N_Cattle^2), data = interactions, family = binomial),
+  deers.2 = glm(Interactions_b ~ N_deers + I(N_deers^2), data = interactions, family = binomial),
+  horses.2 = glm(Interactions_b ~ N_Horses + I(N_Horses^2), data = interactions, family = binomial),
+  global = glm(Interactions_b ~ N_Condors + N_deers + I(N_deers^2) + N_Cattle + I(N_Cattle^2) + N_Horses + I(N_Horses^2), data = interactions, family = binomial)
 )
 
-summary(mod_int_log)
+AICcmodavg::aictab(mods_int_log) # Condors and deers quadratic
+
+summary(mods_int_log$condors) # clear relationship
+summary(mods_int_log$deers.2) # trend
 ```
 
-the high size of the standard error indicates problems with model convergence. We can try a Firth Logistic regression due to separation and small sample size
+As only 4 interaction events have been reported (out of 50; 46 no interactions), the coefficients, p-values, and uncertainty estimates from `glm()` could be unreliable. In addition, the global model reported a LL = 0, a red flag for separation and convergence. Due to these, we can try a Firth's bias-reduced penalized-likelihood logistic regression.
 
 ```{r}
-mod_int_firth <- logistf(
-  Interactions_b ~ N_Condors + N_deers + I(N_deers^2) + N_Cattle + I(N_deers^2) + N_Horses + I(N_Horses^2),
-  data = interactions,
-  family = binomial
+mods_int_logistf <- list(
+  null = logistf(Interactions_b ~ 1, data = interactions, family = binomial),
+  cattle = logistf(Interactions_b ~ N_Cattle, data = interactions, family = binomial),
+  condors = logistf(Interactions_b ~ N_Condors, data = interactions, family = binomial),
+  deers = logistf(Interactions_b ~ N_deers, data = interactions, family = binomial),
+  horses = logistf(Interactions_b ~ N_Horses, data = interactions, family = binomial),
+  lamas = logistf(Interactions_b ~ N_Lamas, data = interactions, family = binomial),
+  sheeps = logistf(Interactions_b ~ N_Sheeps, data = interactions, family = binomial),
+  # quadratic of cattle, deers, horses
+  cattle.2 = logistf(Interactions_b ~ N_Cattle + I(N_Cattle^2), data = interactions, family = binomial),
+  deers.2 = logistf(Interactions_b ~ N_deers + I(N_deers^2), data = interactions, family = binomial),
+  horses.2 = logistf(Interactions_b ~ N_Horses + I(N_Horses^2), data = interactions, family = binomial),
+  global = logistf(Interactions_b ~ N_Condors + N_deers + N_Cattle + N_Horses + N_Sheeps + N_Lamas, data = interactions, family = binomial)
 )
 
-summary(mod_int_firth)
+aic_table_int <- lapply(mods_int_logistf, AICc_logistf)
+aic_table_int <- do.call(rbind, aic_table_int)
+aic_table_int <- aic_table_int |>
+  mutate(dAICc = AICc - min(AICc)) |>
+  arrange(dAICc)
+aic_table_int # global
+
+summary(mods_int_logistf$global)
 ```
 
-The negative coefficient for the intercept (and CI also negative) indicate that at value 0 for all predictors (no condors, no cattle, no deer, no horses), there is no interaction. This is anchoring the model in a starting meaningful way for the covariates (although biologically unrealistic). In mathematical form:
+The negative coefficient for the intercept (and CI also negative) indicate that at value 0 for all predictors (no condors, no livestock), there is no interaction. This is anchoring the model in a starting meaningful way for the covariates (although biologically unrealistic). In mathematical form:
 
 $$
 \text{logit}(\alpha) = \beta_0 + \beta_i X_i \cdots  
 $$
-\noindent where $\alpha$ is the probability of an event to occur (interaction or no interaction), $\beta_0$ the intercept, while $\beta_i$ and $X_i$ are the slope and value, respectively, for each covariate $i$. When all $X_i = 0$,
+\noindent where $\alpha$ is the probability of an event to occur (interaction or no interaction), $\beta_0$ the intercept, while $\beta_i$ and $X_i$ are the slope and value for each covariate $i$, respectively. When all $X_i = 0$,
 $$
 \beta_0 = \log \left( \frac{\alpha}{1-\alpha} \right); \\
 $$
 
-\noindent and with an intercept $\approx -6.21$:
+\noindent and with an intercept $\approx -6.04$:
 $$
-\alpha = \frac{e^{-6.21}}{1+e^{-6.21}} \approx 0.002
+\alpha = \frac{e^{-6.04}}{1+e^{-6.04}} \approx 0.002
 $$
 
-This indicates that when all the predictors have a count of 0 individuals, the predicted probability of an interaction is $0.2%$ (this teeny tiny probability is biologically unrealistic, but mathematically useful to understand the effect of the other covariates).  
+This indicates that when all the predictors have a count of 0 individuals, the predicted probability of an interaction is $0.2\%$ (this teeny tiny probability is biologically unrealistic, but mathematically useful to understand the effect of the other covariates).  
 
-Another output from this model is that deer abundance did not clearly predict the probability of condor-livestock interactions, and despite the LOESS figure of a trend, there was no evidence for a nonlinear (quadratic) effect (*p*-value = 0.304).
-
-The clearest relationship of the probability of occurring an interaction event is with the number of condors. Specifically, $\exp(1.014) \approx 2.76$, which means that each additional condor multiplies the odds of an interaction by 2.8 times.
+The clearest relationship of the probability of occurring an interaction event is with the number of condors. Specifically, $\exp(1.063) \approx 2.89$, which means that each additional condor multiplies the odds of an interaction by almost 3 times.
 
 ```{r}
 newdat_int <- data.frame(
@@ -536,19 +1743,18 @@ newdat_int <- data.frame(
                   length = 100),
   N_deers = median(interactions$N_deers),
   N_Cattle = median(interactions$N_Cattle),
-  N_Horses = median(interactions$N_Horses)
+  N_Horses = median(interactions$N_Horses),
+  N_Sheeps = median(interactions$N_Sheeps),
+  N_Lamas = median(interactions$N_Lamas)
 )
 
 # linear predictors and standar error for 95% CI
-pred_lp <- predict(mod_int_firth, newdat_int, type = "link", se.fit = TRUE)
+pred_lp <- predict(mods_int_logistf$global, newdat_int, type = "link", se.fit = TRUE)
 newdat_int$lp      <- pred_lp$fit
 newdat_int$lp_low  <- pred_lp$fit - 1.96 * pred_lp$se.fit
 newdat_int$lp_high <- pred_lp$fit + 1.96 * pred_lp$se.fit
 
 # Convert to probabilities
-
-invlogit <- function(x) exp(x) / (1 + exp(x))
-
 newdat_int$pred      <- invlogit(newdat_int$lp)
 newdat_int$pred_low  <- invlogit(newdat_int$lp_low)
 newdat_int$pred_high <- invlogit(newdat_int$lp_high)
@@ -565,7 +1771,7 @@ int_a <- ggplot(newdat_int, aes(x = N_Condors, y = pred)) +
   scale_fill_manual(values = met.brewer("OKeeffe1",n=3))+
   scale_y_continuous(limits = c(0,1))+
   scale_x_continuous(breaks = seq(0,6,1))+
-  labs(x = "Number of condors",
+  labs(x = "Number of total condors flying",
        y = "Probability of interaction",
        fill = "Severity",
        tag = "a)") +
@@ -600,12 +1806,12 @@ AICc_logistf <- function(model) {
 }
 
 # construct AIC table
-aic_table <- lapply(mods_condor_classes, AICc_logistf)
-aic_table <- do.call(rbind, aic_table)
-aic_table <- aic_table |>
+aic_table_condors <- lapply(mods_condor_classes, AICc_logistf)
+aic_table_condors <- do.call(rbind, aic_table_condors)
+aic_table_condors <- aic_table_condors |>
   mutate(dAICc = AICc - min(AICc)) |>
   arrange(dAICc)
-aic_table
+aic_table_condors
 ```
 
 Two models are identified as the better among these demographics classes: Number of flying juvenile female condors and number of adult male flying condors.
@@ -617,19 +1823,13 @@ mod_adM  <- mods_condor_classes$adM
 newdat_juvF <- data.frame(
   N_juviCondorsFeme = seq(min(interactions$N_juviCondorsFeme),
                           max(interactions$N_juviCondorsFeme),
-                          length = 100),
-  N_deers   = median(interactions$N_deers),
-  N_Cattle  = median(interactions$N_Cattle),
-  N_Horses  = median(interactions$N_Horses)
-)
+                          length = 100)
+  )
 
 newdat_adM <- data.frame(
   N_adultCondorsMale = seq(min(interactions$N_adultCondorsMale),
                            max(interactions$N_adultCondorsMale),
-                           length = 100),
-  N_deers   = median(interactions$N_deers),
-  N_Cattle  = median(interactions$N_Cattle),
-  N_Horses  = median(interactions$N_Horses)
+                           length = 100)
 )
 
 make_pred_df <- function(model, newdata, xvar) {
@@ -701,11 +1901,11 @@ And combine the figure
 ggsave(filename = "figs/Fig_Aim3_Condor_livestock_interaction.jpg", dpi = 300, 
        width = 150, height = 250, units = "mm")
 ```
-![**Condor-livestock interactions.** Condor-livestock predicted probability of interactions as a function of number of condor flying, where the number of juvenile females and adult males are the clearest related predictors](figs/Fig_Aim3_Condor_livestock_interaction.jpg)
+![**Condor-livestock interactions.** Predicted probability of condor-livestock interactions as a function of number of condor flying (a), whit the number of juvenile females (b) and adult males (c) showing the demographic groups with clearest relationship. The few interactions (4, only 1 severe) were not related with livestock availability, contrary to farmers perceptions.](figs/Fig_Aim3_Condor_livestock_interaction.jpg)
 
-# Coexistence Behavior Hypothesis (aim 4)
+# Coexistence behaviors (4)
 
-Hypothesis: Participation in environmental workshops and the recognition of beneficial ecosystem services (scavenging) drive the adoption of coexistence-based behaviors.
+Participation in environmental workshops and the recognition of beneficial ecosystem services (scavenging) drive the adoption of coexistence-based behaviors.
 
 Here, there are two important behaviors: "leaving carcasses in the field to be consumed by condors" and "educating others about the importance of condor conservation" (Binary outcomes: Logistic regression). The predictors for these behaviors could be "perceived contributions" (beneficial, harmful, both), "attendance at workshops" (yes, no), and "perceptions of population change" (decreased a lot, decreased, remains the same, increased, increased a lot).
 
@@ -716,12 +1916,12 @@ perceptions_coex <- perceptions |>
     leave = ifelse(`Do you leave livestock carcasses in the field to be consumed by condors?` == 0, 1, 0),
     # reorder binomial (0 = No, 1= yes)
     educate = ifelse(`Do you educate others about the importance of Andean condor conservation?` == 0, 1, 0),
-    # reorder as in previous analysis (0 = beneficial, 1 = both, 2 = harmful)
+    # reorder as in previous analysis (0 = beneficial, 1 = harmful, 2 = both)
     perception = ifelse(`Could you indicate if the Andean condor is beneficial and/or harmful to you?` == 1, 0,
-                 ifelse(`Could you indicate if the Andean condor is beneficial and/or harmful to you?` == 2, 1, 2)),
+                 ifelse(`Could you indicate if the Andean condor is beneficial and/or harmful to you?` == 2, 2, 1)),
+    pop.status = `Do you consider that the Andean condor population in this area?`,
     # reorder binomial (0 = No, 1 = Yes)
-    workshop = ifelse(`Have you attended talks/trainings on the environment?` == 0, 1, 0),
-    pop.status = `Do you consider that the Andean condor population in this area?`)
+    workshop = ifelse(`Have you attended talks/trainings on the environment?` == 0, 1, 0))
 
 perceptions_long <- perceptions_coex %>%
   dplyr::select(leave, educate, 
@@ -730,7 +1930,7 @@ perceptions_long <- perceptions_coex %>%
                names_to = "Variable", 
                values_to = "Value") 
 
-
+# exploratory plots
 ggplot(perceptions_long, aes(x = Value, y = leave)) +
   geom_point(alpha = 0.2, fill = "steelblue", shape = 21) +
   geom_smooth()+
@@ -748,37 +1948,69 @@ ggplot(perceptions_long, aes(x = Value, y = educate)) +
   coord_cartesian(ylim = c(0,1))
 ```
 
-Logistic regression with penalized likelihood
+And model selection. First for leaving carcasses
 ```{r}
-mod_leave <- logistf(
-  leave ~ 
-    perception +
-    I(perception^2) +
-    workshop +
-    pop.status +
-    I(pop.status^2),
-  data = perceptions_coex
-)
-summary(mod_leave)
-
-mod_educate <- logistf(
-  educate ~ 
-    perception +
-    I(perception^2) +
-    workshop +
-    pop.status +
-    I(pop.status^2),
-  data = perceptions_coex
+mods_leave <- list(
+  null       = logistf(leave ~ 1, data = perceptions_coex),
+  perception = logistf(leave ~ perception, data = perceptions_coex),
+  workshop   = logistf(leave ~ workshop, data = perceptions_coex),
+  popstatus  = logistf(leave ~ pop.status, data = perceptions_coex),
+  percep2    = logistf(leave ~ perception + I(perception^2), data = perceptions_coex),
+  pop2       = logistf(leave ~ pop.status + I(pop.status^2), data = perceptions_coex),
+  global     = logistf(leave ~ perception + I(perception^2) + workshop + pop.status + I(pop.status^2), data = perceptions_coex)
 )
 
-summary(mod_educate)
+aic_table_leave <- lapply(mods_leave, AICc_logistf)
+aic_table_leave <- do.call(rbind, aic_table_leave)
+aic_table_leave <- aic_table_leave |>
+  mutate(dAICc = AICc - min(AICc)) |>
+  arrange(dAICc)
+aic_table_leave
 ```
 
-The probability of leaving carcasses is not predicted for any of the covariates, even with quadratic effect. In contrast, the probability of educating others about the importance of Andean condor conservation clearly increases for farmers that have attended talks/training workshops on conservation. 
+and for educating others
+```{r}
+mods_educate <- list(
+  null       = logistf(educate ~ 1, data = perceptions_coex),
+  perception = logistf(educate ~ perception, data = perceptions_coex),
+  workshop   = logistf(educate ~ workshop, data = perceptions_coex),
+  popstatus  = logistf(educate ~ pop.status, data = perceptions_coex),
+  percep2    = logistf(educate ~ perception + I(perception^2), data = perceptions_coex),
+  pop2       = logistf(educate ~ pop.status + I(pop.status^2), data = perceptions_coex),
+  global     = logistf(educate ~ perception + I(perception^2) + workshop + pop.status + I(pop.status^2), data = perceptions_coex)
+)
+
+aic_table_educa <- lapply(mods_educate, AICc_logistf)
+aic_table_educa <- do.call(rbind, aic_table_educa)
+aic_table_educa <- aic_table_educa |>
+  mutate(dAICc = AICc - min(AICc)) |>
+  arrange(dAICc)
+aic_table_educa
+```
+
+The behavior of leaving carcass for the condors is weakly related with any hypothesized predictor. The threshold of $\Delta\text{AICc}≤2$ shows that many models, including a "global", are equal possible. We can see the coefficients for these models, showing the marginal increasing trend with perception.
 
 ```{r}
-newdat_leave_w <- data.frame(
-  workshop = seq(min(perceptions_coex$workshop), 
+aic_table_leave
+summary(mods_leave$perception) # marginal increasing trend
+summary(mods_leave$pop2) # no effect
+summary(mods_leave$percep2) # no effect
+summary(mods_leave$global) # none of the variables predict leaving carcasses
+```
+
+In contrast, the probability of educating others about the importance of Andean condor conservation clearly increases for farmers that have attended talks/training workshops on conservation. 
+
+```{r}
+aic_table_educa
+summary(mods_educate$global) # among the variables in global, workshop is the predictor with better relationship
+summary(mods_educate$workshop) # the simplified model for workshop confirm this strong relationship
+```
+Workshop attendance is the dominant predictor of those evaluated. Other predictors add only small improvements (in the global)
+
+We can have data to represent these relationships
+```{r}
+newdat_leave_wor <- data.frame(
+  workshop = seq(min(perceptions_coex$workshop),
                  max(perceptions_coex$workshop),
                  length = 100),
   perception = median(perceptions_coex$perception),
@@ -797,23 +2029,19 @@ newdat_leave_pop <- data.frame(
   workshop = median(perceptions_coex$workshop),
   perception = median(perceptions_coex$perception),
   pop.status = seq(min(perceptions_coex$pop.status),
-                   max(perceptions_coex$pop.status),
-                   length = 100)
+                max(perceptions_coex$pop.status),
+                length = 100)
 )
 
 # predictions from models
-pred_leave_workshop <- make_pred_df(mod_leave, newdat_leave_w, "workshop")
-pred_leave_perception <- make_pred_df(mod_leave, newdat_leave_per, "perception")
-pred_leave_pop.status <- make_pred_df(mod_leave, newdat_leave_pop, "pop.status")
-
-pred_educa_workshop <- make_pred_df(mod_educate, newdat_leave_w, "workshop")
-pred_educa_perception <- make_pred_df(mod_educate, newdat_leave_per, "perception")
-pred_educa_pop.status <- make_pred_df(mod_educate, newdat_leave_pop, "pop.status")
+pred_leave_workshop <- make_pred_df(mods_leave$global, newdat_leave_wor, "workshop")
+pred_leave_perception <- make_pred_df(mods_leave$perception, newdat_leave_per, "perception")
+pred_leave_pop.status <- make_pred_df(mods_leave$global, newdat_leave_pop, "pop.status")
 
 leave_a <- ggplot(pred_leave_workshop, aes(x = xvar, y = pred)) +
   geom_ribbon(aes(ymin = pred_low, ymax = pred_high),
               fill = "steelblue", alpha = 0.15) +
-  geom_line(size = 1.2, color = "steelblue", linetype = "dashed") +
+  geom_line(size = 1.2, color = "steelblue", linetype = "dotted") +
   geom_point(data = perceptions_coex,
              aes(x = workshop, y = leave),
              alpha = 0.2, shape = 21, fill = "steelblue") +
@@ -822,14 +2050,32 @@ leave_a <- ggplot(pred_leave_workshop, aes(x = xvar, y = pred)) +
                      labels = c("0" = "No", "1" = "Yes"))+
   labs(x = "Have the farmers ever attended a conservation workshop",
        y = "Probability of leaving carcasses",
-       tag = "a)") +
+       tag = "d)") +
   theme_classic()
 leave_a
 
-leave_b <- ggplot(pred_leave_pop.status, aes(x = xvar, y = pred)) +
+leave_b <- ggplot(pred_leave_perception, aes(x = xvar, y = pred)) +
   geom_ribbon(aes(ymin = pred_low, ymax = pred_high),
               fill = "steelblue", alpha = 0.15) +
   geom_line(size = 1.2, color = "steelblue", linetype = "dashed") +
+  geom_point(data = perceptions_coex,
+             aes(x = perception, y = leave),
+             alpha = 0.2, shape = 21, fill = "steelblue") +
+  scale_y_continuous(limits = c(0,1)) +
+  scale_x_continuous(breaks = c(0,1,2),
+                     labels = c("0" = "Beneficial", 
+                                "1" = "Harmful",
+                                "2" = "Both"))+
+  labs(x = "Perceibed condor harmfulness",
+       y = "Probability of leaving carcasses",
+       tag = "e)") +
+  theme_classic()
+leave_b
+
+leave_c <- ggplot(pred_leave_pop.status, aes(x = xvar, y = pred)) +
+  geom_ribbon(aes(ymin = pred_low, ymax = pred_high),
+              fill = "steelblue", alpha = 0.15) +
+  geom_line(size = 1.2, color = "steelblue", linetype = "dotted") +
   geom_point(data = perceptions_coex,
              aes(x = pop.status, y = leave),
              alpha = 0.2, shape = 21, fill = "steelblue") +
@@ -842,27 +2088,14 @@ leave_b <- ggplot(pred_leave_pop.status, aes(x = xvar, y = pred)) +
                                 "4" = "Increased a lot"))+
   labs(x = "Perceibed condor population status",
        y = "Probability of leaving carcasses",
-       tag = "b)") +
-  theme_classic()
-leave_b
-
-leave_c <- ggplot(pred_leave_perception, aes(x = xvar, y = pred)) +
-  geom_ribbon(aes(ymin = pred_low, ymax = pred_high),
-              fill = "steelblue", alpha = 0.15) +
-  geom_line(size = 1.2, color = "steelblue", linetype = "dashed") +
-  geom_point(data = perceptions_coex,
-             aes(x = perception, y = leave),
-             alpha = 0.2, shape = 21, fill = "steelblue") +
-  scale_y_continuous(limits = c(0,1)) +
-  scale_x_continuous(breaks = c(0,1,2),
-                     labels = c("0" = "Beneficial", 
-                                "1" = "Both",
-                                "2" = "Harmful"))+
-  labs(x = "Perceibed condor harmfulness",
-       y = "Probability of leaving carcasses",
-       tag = "c)") +
+       tag = "f)") +
   theme_classic()
 leave_c
+
+
+pred_educa_workshop <- make_pred_df(mods_educate$workshop, newdat_leave_wor, "workshop")
+pred_educa_perception <- make_pred_df(mods_educate$global, newdat_leave_per, "perception")
+pred_educa_pop.status <- make_pred_df(mods_educate$global, newdat_leave_pop, "pop.status")
 
 educa_a <- ggplot(pred_educa_workshop, aes(x = xvar, y = pred)) +
   geom_ribbon(aes(ymin = pred_low, ymax = pred_high),
@@ -876,14 +2109,32 @@ educa_a <- ggplot(pred_educa_workshop, aes(x = xvar, y = pred)) +
                      labels = c("0" = "No", "1" = "Yes"))+
   labs(x = "Have the farmers ever attended a conservation workshop",
        y = "Probability of educating others",
-       tag = "d)") +
+       tag = "a)") +
   theme_classic()
 educa_a
 
-educa_b <- ggplot(pred_educa_pop.status, aes(x = xvar, y = pred)) +
+educa_b <- ggplot(pred_educa_perception, aes(x = xvar, y = pred)) +
   geom_ribbon(aes(ymin = pred_low, ymax = pred_high),
               fill = "firebrick", alpha = 0.15) +
-  geom_line(size = 1.2, color = "firebrick", linetype = "dashed") +
+  geom_line(size = 1.2, color = "firebrick", linetype = "dotted") +
+  geom_point(data = perceptions_coex,
+             aes(x = perception, y = leave),
+             alpha = 0.2, shape = 21, fill = "firebrick") +
+  scale_y_continuous(limits = c(0,1)) +
+  scale_x_continuous(breaks = c(0,1,2),
+                     labels = c("0" = "Beneficial", 
+                                "1" = "Harmful",
+                                "2" = "Both"))+
+  labs(x = "Perceibed condor harmfulness",
+       y = "Probability of educating others",
+       tag = "b)") +
+  theme_classic()
+educa_b
+
+educa_c <- ggplot(pred_educa_pop.status, aes(x = xvar, y = pred)) +
+  geom_ribbon(aes(ymin = pred_low, ymax = pred_high),
+              fill = "firebrick", alpha = 0.15) +
+  geom_line(size = 1.2, color = "firebrick", linetype = "dotted") +
   geom_point(data = perceptions_coex,
              aes(x = pop.status, y = leave),
              alpha = 0.2, shape = 21, fill = "firebrick") +
@@ -896,34 +2147,16 @@ educa_b <- ggplot(pred_educa_pop.status, aes(x = xvar, y = pred)) +
                                 "4" = "Increased a lot"))+
   labs(x = "Perceibed condor population status",
        y = "Probability of educating others",
-       tag = "e)") +
-  theme_classic()
-educa_b
-
-educa_c <- ggplot(pred_educa_perception, aes(x = xvar, y = pred)) +
-  geom_ribbon(aes(ymin = pred_low, ymax = pred_high),
-              fill = "firebrick", alpha = 0.15) +
-  geom_line(size = 1.2, color = "firebrick", linetype = "dashed") +
-  geom_point(data = perceptions_coex,
-             aes(x = perception, y = leave),
-             alpha = 0.2, shape = 21, fill = "firebrick") +
-  scale_y_continuous(limits = c(0,1)) +
-  scale_x_continuous(breaks = c(0,1,2),
-                     labels = c("0" = "Beneficial", 
-                                "1" = "Both",
-                                "2" = "Harmful"))+
-  labs(x = "Perceibed condor harmfulness",
-       y = "Probability of educating others",
-       tag = "f)") +
+       tag = "c)") +
   theme_classic()
 educa_c
 ```
 
 And combining the figure
 ```{r}
-(leave_a | leave_b | leave_c) / (educa_a | educa_b | educa_c)
+(educa_a | educa_b | educa_c) / (leave_a | leave_b | leave_c)
 
-ggsave(filename = "figs/Fig_Aim4_Coexistence.jpg", dpi = 300, 
+ggsave(filename = "figs/Fig_Aim3_Coexistence.jpg", dpi = 300, 
        width = 350, height = 160, units = "mm")
 ```
-![**Coexistence behavior require conservation action.** Educating others about Andean condor conservation clearly related with attendance to conservation workshops (training and talks). However, there were not clear relationship of the other predictors in this behavior of educating others or leaving carcasses for Andean condor (dashed lines).](figs/Fig_Aim4_Coexistence.jpg)
+![**Coexistence behavior require conservation action.** Educating others about Andean condor conservation clearly related with attendance to conservation workshops (training and talks). However, there were not clear relationship of the other predictors in this behavior of educating others or the behavior of leaving carcasses for Andean condor (dotted lines). The marginal trend of leaving carcases with perception of harmfulness was an exception.](figs/Fig_Aim3_Coexistence.jpg)
