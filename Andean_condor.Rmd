@@ -127,10 +127,13 @@ make_pred_df <- function(model, newdata, xvar) {
 }
 ```
 
-# Data loading and exploratory analyzes (0)
+# Data loading and exploratory analyzes
 
 ```{r, warning=FALSE}
 perceptions <- read_csv("data_condor/perceptions_data.csv")
+# correcting the data
+perceptions[32,c(17:18)] <- NA
+
 interactions <- read_csv("data_condor/interactions_data.csv")
 str(perceptions)
 str(interactions)
@@ -141,7 +144,7 @@ This table summarize 58 interviews, with questions as variables.
 ## Exploratory description analyses
 
 We can do exploratory description of the sample
-```{r Geographic and demographic exploratory, echo = FALSE}
+```{r Geographic and demographic exploratory}
 FigSite <- perceptions |>
   mutate(Site = ifelse(`Paddock site` == 0, "Antisana", "Llanganates")) |>
   ggplot(aes(x = Site)) +
@@ -233,7 +236,7 @@ ggsave(filename = "figs/Fig_descriptive_geo_demo.jpg", dpi = 300,
 
 ```
 
-```{r Farm exploratory, echo = FALSE}
+```{r Farm exploratory}
 FigNanimals <- perceptions |>
   dplyr::select(Subject, Cattle, Horse, Sheep, Lama) |>
   pivot_longer(cols = c(Cattle, Horse, Sheep, Lama),
@@ -294,7 +297,7 @@ ggsave(filename = "figs/Fig_descriptive_farm_livestock.jpg", dpi = 300,
        width = 260, height = 100, units = "mm")
 ```
 
-```{r Perceptions exploratory, echo = FALSE}
+```{r Perceptions exploratory}
 FigPerception <- perceptions |>
   mutate(`Do condors attack livestock?` = ifelse(`Do you think condors attack living livestock?`== 0, "0-Never",
                                     ifelse(`Do you think condors attack living livestock?`==1, "1-Rarely",
@@ -386,7 +389,7 @@ ggsave(filename = "figs/Fig_descriptive_perceptions.jpg", dpi = 300,
        width = 260, height = 160, units = "mm")
 ```
 
-```{r Experiences descriptive, echo = FALSE}
+```{r Experiences descriptive}
 FigLosses <- perceptions |>
   mutate(`Losses due to condors?` = ifelse(`Have you suffered losses of livestock due to attacks by condors?` == 0, "1-Yes",
                                                         ifelse(`Have you suffered losses of livestock due to attacks by condors?` == 1, "0-No",NA))) |>
@@ -430,7 +433,7 @@ ggsave(filename = "figs/Fig_descriptive_farm_experiences.jpg", dpi = 300,
        width = 260, height = 100, units = "mm")
 ```
 
-```{r Solutions exploratory, echo = FALSE}
+```{r Solutions exploratory}
 FigReport <- perceptions |>
   mutate(`Reported if any attack?` = ifelse(`If you have suffered an attack in the last 5 years, have you reported it to the provincial authority?` == 0, "1-Yes",
                                                         ifelse(`If you have suffered an attack in the last 5 years, have you reported it to the provincial authority?` == 1, "0-No",NA))) |>
@@ -491,7 +494,7 @@ ggsave(filename = "figs/Fig_descriptive_solutions.jpg", dpi = 300,
        width = 260, height = 100, units = "mm")
 ```
 
-```{r Attitudes exploratory, echo = FALSE}
+```{r Attitudes exploratory}
 FigFeelings <- perceptions |>
   mutate(`Feelings towards condors?` = ifelse(`What are your feelings towards Andean condors?` == 0, "4-Like a lot",
                                                         ifelse(`What are your feelings towards Andean condors?` == 1, "3-Like",
@@ -557,7 +560,7 @@ ggsave(filename = "figs/Fig_descriptive_attitudes.jpg", dpi = 300,
        width = 260, height = 100, units = "mm")
 ```
 
-```{r behaviors exploratory, echo = FALSE}
+```{r Behaviors exploratory}
 FigLeave <- perceptions |>
   mutate(`Do farmers leave carcasses?` = ifelse(`Do you leave livestock carcasses in the field to be consumed by condors?`== 0, "1-Yes",
                                     ifelse(`Do you leave livestock carcasses in the field to be consumed by condors?`==1, "0-No",NA))) |>
@@ -587,7 +590,25 @@ ggsave(filename = "figs/Fig_descriptive_behavior.jpg", dpi = 300,
        width = 160, height = 100, units = "mm")
 ```
 
-# Perception of people that Andean condor attacks livestock (1)
+Figure for results
+
+```{r}
+FigPerception 
+
+FigLosses <- FigLosses +
+  labs(tag = "b)")
+
+FigSeenAttack <- FigSeenAttack +
+  labs(tag = "c)")
+
+FigPerception | FigLosses | FigSeenAttack
+
+ggsave(filename = "figs/Figure_1.jpg", dpi = 300, 
+       width = 180, height = 100, units = "mm")
+```
+
+
+# Perception of people that Andean condor attacks livestock (aim 1)
 
 Farmers perceive the Andean condor as a livestock predator, but vary with socio-demographic, farm characteristics, and experience/attitudes
 
@@ -1045,6 +1066,8 @@ perceptions_Y3 <- perceptions |>
                        ifelse(`Would you like the Andean condor population in the National Park and the surrounding area to?`== 3, "2-Increased",
                        ifelse(`Would you like the Andean condor population in the National Park and the surrounding area to?`== 4, "2-Increased",
                        NA))))),
+    # reorder binomial (0 = No, 1 = Yes)
+    workshop = ifelse(`Have you attended talks/trainings on the environment?` == 0, 1, 0)
          )
 
 # a list of ordered logistic regression
@@ -1055,7 +1078,8 @@ mods_perceptions_expatt <- list(
   atti.feeling = polr(perceptions_1 ~ atti.feeling, data = perceptions_Y3, Hess = TRUE),
   atti.dissap = polr(perceptions_1 ~ atti.dissap, data = perceptions_Y3, Hess = TRUE),
   atti.popcha = polr(perceptions_1 ~ atti.popcha, data = perceptions_Y3, Hess = TRUE),
-  global = polr(perceptions_1 ~ seen.attack + perc.popcha + atti.feeling + atti.dissap + atti.popcha, data = perceptions_Y3, Hess = TRUE)
+  workshop = polr(perceptions_1 ~ workshop, data = perceptions_Y3, Hess = TRUE),
+  global = polr(perceptions_1 ~ seen.attack + perc.popcha + atti.feeling + atti.dissap + atti.popcha + workshop, data = perceptions_Y3, Hess = TRUE)
     )
 
 AICcmodavg::aictab(mods_perceptions_expatt) # seen.attack and null
@@ -1177,7 +1201,7 @@ ggsave(filename = "figs/Fig_Aim1_b_c_perception.jpg", dpi = 300,
 ![**Perpection of attacts perceived by farm characteristics and experiences.** No clear relationship of variables related with the predicted probability of perceibing condors attacking livestock (models selected with AICc). This probability is ordered by the ordinal perception of condors attacking livestock Never, Rarely, Sometimes, and Often (colors). Variation represents 95% confidence intervals as a measure of uncertainty after 1000 simulation of the parameters. Two predictors selected to illustrate this unclear relationship, number of cattle for farm characteristics (a), and have seen an attack by farmers (b)](figs/Fig_Aim1_b_c_perception.jpg)
 
 
-# Perception of harmfulness or mixed compared to beneficial (2)
+# Perception of harmfulness or mixed compared to beneficial (aim 2)
 
 Farmers perceive the Andean condor as beneficial, harmfulness, or a combination (mixed perception). However, these perceptions vary with socio-demographic, farm characteristics, and experience/attitudes
 
@@ -1508,7 +1532,10 @@ perceptions_Y6 <- perceptions |>
          perc.attack = ifelse(`Do you think condors attack living livestock?` == 0, "0-Never",
                            ifelse(`Do you think condors attack living livestock?` == 1, "1-Rarely",
                            ifelse(`Do you think condors attack living livestock?` == 2, "2-Sometimes",
-                           ifelse(`Do you think condors attack living livestock?` == 3, "3-Often",NA)))))
+                           ifelse(`Do you think condors attack living livestock?` == 3, "3-Often",NA)))),
+         # reorder binomial (0 = No, 1 = Yes)
+    workshop = ifelse(`Have you attended talks/trainings on the environment?` == 0, 1, 0)
+         )
 
 # a list of ordered logistic regression
 mods_benefit_att <- list(
@@ -1519,7 +1546,8 @@ mods_benefit_att <- list(
   atti.dissap = multinom(Y_benefit ~ atti.dissap, data = perceptions_Y6),
   atti.popcha = multinom(Y_benefit ~ atti.popcha, data = perceptions_Y6),
   perc.attack = multinom(Y_benefit ~ perc.attack, data = perceptions_Y6),
-  global = multinom(Y_benefit ~ seen.attack + perc.popcha + atti.feeling + atti.dissap + atti.popcha + perc.attack, data = perceptions_Y6)
+  workshop = multinom(Y_benefit ~ workshop, data = perceptions_Y6),
+  global = multinom(Y_benefit ~ seen.attack + perc.popcha + atti.feeling + atti.dissap + atti.popcha + perc.attack + workshop, data = perceptions_Y6)
   )
 
 AICcmodavg::aictab(mods_benefit_att) # perc.attack
@@ -1625,7 +1653,264 @@ ggsave(filename = "figs/Fig_Aim2_a_b_c_perception.jpg", dpi = 300,
 
 
 
-# Field observations of condor attacking livestock (3)
+# Coexistence behaviors (aim 3)
+
+Participation in environmental workshops and the recognition of beneficial ecosystem services (scavenging) drive the adoption of coexistence-based behaviors.
+
+Here, there are two important behaviors: "leaving carcasses in the field to be consumed by condors" and "educating others about the importance of condor conservation" (Binary outcomes: Logistic regression). The predictors for these behaviors could be "perceived contributions" (beneficial, harmful, both), "attendance at workshops" (yes, no), and "perceptions of population change" (decreased a lot, decreased, remains the same, increased, increased a lot).
+
+```{r warning=FALSE}
+perceptions_coex <- perceptions |>
+  mutate(
+    # reorder binomial (0 = No, 1= yes)
+    leave = ifelse(`Do you leave livestock carcasses in the field to be consumed by condors?` == 0, 1, 0),
+    # reorder binomial (0 = No, 1= yes)
+    educate = ifelse(`Do you educate others about the importance of Andean condor conservation?` == 0, 1, 0),
+    # reorder as in previous analysis (0 = beneficial, 1 = harmful, 2 = both)
+    perception = ifelse(`Could you indicate if the Andean condor is beneficial and/or harmful to you?` == 1, 0,
+                 ifelse(`Could you indicate if the Andean condor is beneficial and/or harmful to you?` == 2, 2, 1)),
+    pop.status = `Do you consider that the Andean condor population in this area?`,
+    # reorder binomial (0 = No, 1 = Yes)
+    workshop = ifelse(`Have you attended talks/trainings on the environment?` == 0, 1, 0))
+
+perceptions_long <- perceptions_coex %>%
+  dplyr::select(leave, educate, 
+                perception, workshop, pop.status) %>%
+  pivot_longer(-c(leave, educate), 
+               names_to = "Variable", 
+               values_to = "Value") 
+
+# exploratory plots
+ggplot(perceptions_long, aes(x = Value, y = leave)) +
+  geom_point(alpha = 0.2, fill = "steelblue", shape = 21) +
+  geom_smooth()+
+  facet_wrap(~ Variable, scales = "free_x") +
+  labs(x = "Value", y = "Probability of leaving carcass") +
+  theme_classic() +
+  coord_cartesian(ylim = c(0,1))
+
+ggplot(perceptions_long, aes(x = Value, y = educate)) +
+  geom_point(alpha = 0.2, fill = "firebrick", shape = 21) +
+  geom_smooth()+
+  facet_wrap(~ Variable, scales = "free_x") +
+  labs(x = "Value", y = "Probability of educating others") +
+  theme_classic() +
+  coord_cartesian(ylim = c(0,1))
+```
+
+And model selection. First for leaving carcasses
+```{r}
+mods_leave <- list(
+  null       = logistf(leave ~ 1, data = perceptions_coex),
+  perception = logistf(leave ~ perception, data = perceptions_coex),
+  workshop   = logistf(leave ~ workshop, data = perceptions_coex),
+  popstatus  = logistf(leave ~ pop.status, data = perceptions_coex),
+  percep2    = logistf(leave ~ perception + I(perception^2), data = perceptions_coex),
+  pop2       = logistf(leave ~ pop.status + I(pop.status^2), data = perceptions_coex),
+  global     = logistf(leave ~ perception + I(perception^2) + workshop + pop.status + I(pop.status^2), data = perceptions_coex)
+)
+
+aic_table_leave <- lapply(mods_leave, AICc_logistf)
+aic_table_leave <- do.call(rbind, aic_table_leave)
+aic_table_leave <- aic_table_leave |>
+  mutate(dAICc = AICc - min(AICc)) |>
+  arrange(dAICc)
+aic_table_leave
+```
+
+and for educating others
+```{r}
+mods_educate <- list(
+  null       = logistf(educate ~ 1, data = perceptions_coex),
+  perception = logistf(educate ~ perception, data = perceptions_coex),
+  workshop   = logistf(educate ~ workshop, data = perceptions_coex),
+  popstatus  = logistf(educate ~ pop.status, data = perceptions_coex),
+  percep2    = logistf(educate ~ perception + I(perception^2), data = perceptions_coex),
+  pop2       = logistf(educate ~ pop.status + I(pop.status^2), data = perceptions_coex),
+  global     = logistf(educate ~ perception + I(perception^2) + workshop + pop.status + I(pop.status^2), data = perceptions_coex)
+)
+
+aic_table_educa <- lapply(mods_educate, AICc_logistf)
+aic_table_educa <- do.call(rbind, aic_table_educa)
+aic_table_educa <- aic_table_educa |>
+  mutate(dAICc = AICc - min(AICc)) |>
+  arrange(dAICc)
+aic_table_educa
+```
+
+The behavior of leaving carcass for the condors is weakly related with any hypothesized predictor. The threshold of $\Delta\text{AICc}≤2$ shows that many models, including a "global", are equal possible. We can see the coefficients for these models, showing the marginal increasing trend with perception.
+
+```{r}
+aic_table_leave
+summary(mods_leave$perception) # marginal increasing trend
+summary(mods_leave$pop2) # no effect
+summary(mods_leave$percep2) # no effect
+summary(mods_leave$global) # none of the variables predict leaving carcasses
+```
+
+In contrast, the probability of educating others about the importance of Andean condor conservation clearly increases for farmers that have attended talks/training workshops on conservation. 
+
+```{r}
+aic_table_educa
+summary(mods_educate$global) # among the variables in global, workshop is the predictor with better relationship
+summary(mods_educate$workshop) # the simplified model for workshop confirm this strong relationship
+```
+Workshop attendance is the dominant predictor of those evaluated. Other predictors add only small improvements (in the global)
+
+We can have data to represent these relationships
+```{r}
+newdat_leave_wor <- data.frame(
+  workshop = seq(min(perceptions_coex$workshop),
+                 max(perceptions_coex$workshop),
+                 length = 100),
+  perception = median(perceptions_coex$perception),
+  pop.status = median(perceptions_coex$pop.status)
+)
+
+newdat_leave_per <- data.frame(
+  workshop = median(perceptions_coex$workshop),
+  perception = seq(min(perceptions_coex$perception),
+                   max(perceptions_coex$perception),
+                   length = 100),
+  pop.status = median(perceptions_coex$pop.status)
+)
+
+newdat_leave_pop <- data.frame(
+  workshop = median(perceptions_coex$workshop),
+  perception = median(perceptions_coex$perception),
+  pop.status = seq(min(perceptions_coex$pop.status),
+                max(perceptions_coex$pop.status),
+                length = 100)
+)
+
+# predictions from models
+pred_leave_workshop <- make_pred_df(mods_leave$global, newdat_leave_wor, "workshop")
+pred_leave_perception <- make_pred_df(mods_leave$perception, newdat_leave_per, "perception")
+pred_leave_pop.status <- make_pred_df(mods_leave$global, newdat_leave_pop, "pop.status")
+
+leave_a <- ggplot(pred_leave_workshop, aes(x = xvar, y = pred)) +
+  geom_ribbon(aes(ymin = pred_low, ymax = pred_high),
+              fill = "steelblue", alpha = 0.15) +
+  geom_line(size = 1.2, color = "steelblue", linetype = "dotted") +
+  geom_point(data = perceptions_coex,
+             aes(x = workshop, y = leave),
+             alpha = 0.2, shape = 21, fill = "steelblue") +
+  scale_y_continuous(limits = c(0,1)) +
+  scale_x_continuous(breaks = c(0,1),
+                     labels = c("0" = "No", "1" = "Yes"))+
+  labs(x = "Have the farmers ever attended a conservation workshop",
+       y = "Probability of leaving carcasses",
+       tag = "d)") +
+  theme_classic()
+leave_a
+
+leave_b <- ggplot(pred_leave_perception, aes(x = xvar, y = pred)) +
+  geom_ribbon(aes(ymin = pred_low, ymax = pred_high),
+              fill = "steelblue", alpha = 0.15) +
+  geom_line(size = 1.2, color = "steelblue", linetype = "dashed") +
+  geom_point(data = perceptions_coex,
+             aes(x = perception, y = leave),
+             alpha = 0.2, shape = 21, fill = "steelblue") +
+  scale_y_continuous(limits = c(0,1)) +
+  scale_x_continuous(breaks = c(0,1,2),
+                     labels = c("0" = "Beneficial", 
+                                "1" = "Harmful",
+                                "2" = "Both"))+
+  labs(x = "Perceibed condor harmfulness",
+       y = "Probability of leaving carcasses",
+       tag = "e)") +
+  theme_classic()
+leave_b
+
+leave_c <- ggplot(pred_leave_pop.status, aes(x = xvar, y = pred)) +
+  geom_ribbon(aes(ymin = pred_low, ymax = pred_high),
+              fill = "steelblue", alpha = 0.15) +
+  geom_line(size = 1.2, color = "steelblue", linetype = "dotted") +
+  geom_point(data = perceptions_coex,
+             aes(x = pop.status, y = leave),
+             alpha = 0.2, shape = 21, fill = "steelblue") +
+  scale_y_continuous(limits = c(0,1)) +
+  scale_x_continuous(breaks = c(0,1,2,3,4),
+                     labels = c("0" = "Decreased a lot", 
+                                "1" = "Decreased",
+                                "2" = "Stable",
+                                "3" = "Increased",
+                                "4" = "Increased a lot"))+
+  labs(x = "Perceibed condor population status",
+       y = "Probability of leaving carcasses",
+       tag = "f)") +
+  theme_classic()
+leave_c
+
+
+pred_educa_workshop <- make_pred_df(mods_educate$workshop, newdat_leave_wor, "workshop")
+pred_educa_perception <- make_pred_df(mods_educate$global, newdat_leave_per, "perception")
+pred_educa_pop.status <- make_pred_df(mods_educate$global, newdat_leave_pop, "pop.status")
+
+educa_a <- ggplot(pred_educa_workshop, aes(x = xvar, y = pred)) +
+  geom_ribbon(aes(ymin = pred_low, ymax = pred_high),
+              fill = "firebrick", alpha = 0.15) +
+  geom_line(size = 1.2, color = "firebrick", linetype = "solid") +
+  geom_point(data = perceptions_coex,
+             aes(x = workshop, y = leave),
+             alpha = 0.2, shape = 21, fill = "firebrick") +
+  scale_y_continuous(limits = c(0,1)) +
+  scale_x_continuous(breaks = c(0,1),
+                     labels = c("0" = "No", "1" = "Yes"))+
+  labs(x = "Have the farmers ever attended a conservation workshop",
+       y = "Probability of educating others",
+       tag = "a)") +
+  theme_classic()
+educa_a
+
+educa_b <- ggplot(pred_educa_perception, aes(x = xvar, y = pred)) +
+  geom_ribbon(aes(ymin = pred_low, ymax = pred_high),
+              fill = "firebrick", alpha = 0.15) +
+  geom_line(size = 1.2, color = "firebrick", linetype = "dotted") +
+  geom_point(data = perceptions_coex,
+             aes(x = perception, y = leave),
+             alpha = 0.2, shape = 21, fill = "firebrick") +
+  scale_y_continuous(limits = c(0,1)) +
+  scale_x_continuous(breaks = c(0,1,2),
+                     labels = c("0" = "Beneficial", 
+                                "1" = "Harmful",
+                                "2" = "Both"))+
+  labs(x = "Perceibed condor harmfulness",
+       y = "Probability of educating others",
+       tag = "b)") +
+  theme_classic()
+educa_b
+
+educa_c <- ggplot(pred_educa_pop.status, aes(x = xvar, y = pred)) +
+  geom_ribbon(aes(ymin = pred_low, ymax = pred_high),
+              fill = "firebrick", alpha = 0.15) +
+  geom_line(size = 1.2, color = "firebrick", linetype = "dotted") +
+  geom_point(data = perceptions_coex,
+             aes(x = pop.status, y = leave),
+             alpha = 0.2, shape = 21, fill = "firebrick") +
+  scale_y_continuous(limits = c(0,1)) +
+  scale_x_continuous(breaks = c(0,1,2,3,4),
+                     labels = c("0" = "Decreased a lot", 
+                                "1" = "Decreased",
+                                "2" = "Stable",
+                                "3" = "Increased",
+                                "4" = "Increased a lot"))+
+  labs(x = "Perceibed condor population status",
+       y = "Probability of educating others",
+       tag = "c)") +
+  theme_classic()
+educa_c
+```
+
+And combining the figure
+```{r}
+(educa_a | educa_b | educa_c) / (leave_a | leave_b | leave_c)
+
+ggsave(filename = "figs/Fig_Aim3_Coexistence.jpg", dpi = 300, 
+       width = 350, height = 160, units = "mm")
+```
+![**Coexistence behavior require conservation action.** Educating others about Andean condor conservation clearly related with attendance to conservation workshops (training and talks). However, there were not clear relationship of the other predictors in this behavior of educating others or the behavior of leaving carcasses for Andean condor (dotted lines). The marginal trend of leaving carcases with perception of harmfulness was an exception.](figs/Fig_Aim3_Coexistence.jpg)
+# Field observations of condor attacking livestock (aim 4)
 
 Field observations will reveal little evidence of condor predation on live livestock. As such, perceived impacts are likely to exceed those supported by empirical evidence ([Duriez *et al.* 2019](doi:10.1017/S0959270918000345), [Ballejo *et al.* 2020](https://doi.org/10.1016/j.biocon.2020.108627)).
 
@@ -1903,260 +2188,3 @@ ggsave(filename = "figs/Fig_Aim3_Condor_livestock_interaction.jpg", dpi = 300,
 ```
 ![**Condor-livestock interactions.** Predicted probability of condor-livestock interactions as a function of number of condor flying (a), whit the number of juvenile females (b) and adult males (c) showing the demographic groups with clearest relationship. The few interactions (4, only 1 severe) were not related with livestock availability, contrary to farmers perceptions.](figs/Fig_Aim3_Condor_livestock_interaction.jpg)
 
-# Coexistence behaviors (4)
-
-Participation in environmental workshops and the recognition of beneficial ecosystem services (scavenging) drive the adoption of coexistence-based behaviors.
-
-Here, there are two important behaviors: "leaving carcasses in the field to be consumed by condors" and "educating others about the importance of condor conservation" (Binary outcomes: Logistic regression). The predictors for these behaviors could be "perceived contributions" (beneficial, harmful, both), "attendance at workshops" (yes, no), and "perceptions of population change" (decreased a lot, decreased, remains the same, increased, increased a lot).
-
-```{r warning=FALSE}
-perceptions_coex <- perceptions |>
-  mutate(
-    # reorder binomial (0 = No, 1= yes)
-    leave = ifelse(`Do you leave livestock carcasses in the field to be consumed by condors?` == 0, 1, 0),
-    # reorder binomial (0 = No, 1= yes)
-    educate = ifelse(`Do you educate others about the importance of Andean condor conservation?` == 0, 1, 0),
-    # reorder as in previous analysis (0 = beneficial, 1 = harmful, 2 = both)
-    perception = ifelse(`Could you indicate if the Andean condor is beneficial and/or harmful to you?` == 1, 0,
-                 ifelse(`Could you indicate if the Andean condor is beneficial and/or harmful to you?` == 2, 2, 1)),
-    pop.status = `Do you consider that the Andean condor population in this area?`,
-    # reorder binomial (0 = No, 1 = Yes)
-    workshop = ifelse(`Have you attended talks/trainings on the environment?` == 0, 1, 0))
-
-perceptions_long <- perceptions_coex %>%
-  dplyr::select(leave, educate, 
-                perception, workshop, pop.status) %>%
-  pivot_longer(-c(leave, educate), 
-               names_to = "Variable", 
-               values_to = "Value") 
-
-# exploratory plots
-ggplot(perceptions_long, aes(x = Value, y = leave)) +
-  geom_point(alpha = 0.2, fill = "steelblue", shape = 21) +
-  geom_smooth()+
-  facet_wrap(~ Variable, scales = "free_x") +
-  labs(x = "Value", y = "Probability of leaving carcass") +
-  theme_classic() +
-  coord_cartesian(ylim = c(0,1))
-
-ggplot(perceptions_long, aes(x = Value, y = educate)) +
-  geom_point(alpha = 0.2, fill = "firebrick", shape = 21) +
-  geom_smooth()+
-  facet_wrap(~ Variable, scales = "free_x") +
-  labs(x = "Value", y = "Probability of educating others") +
-  theme_classic() +
-  coord_cartesian(ylim = c(0,1))
-```
-
-And model selection. First for leaving carcasses
-```{r}
-mods_leave <- list(
-  null       = logistf(leave ~ 1, data = perceptions_coex),
-  perception = logistf(leave ~ perception, data = perceptions_coex),
-  workshop   = logistf(leave ~ workshop, data = perceptions_coex),
-  popstatus  = logistf(leave ~ pop.status, data = perceptions_coex),
-  percep2    = logistf(leave ~ perception + I(perception^2), data = perceptions_coex),
-  pop2       = logistf(leave ~ pop.status + I(pop.status^2), data = perceptions_coex),
-  global     = logistf(leave ~ perception + I(perception^2) + workshop + pop.status + I(pop.status^2), data = perceptions_coex)
-)
-
-aic_table_leave <- lapply(mods_leave, AICc_logistf)
-aic_table_leave <- do.call(rbind, aic_table_leave)
-aic_table_leave <- aic_table_leave |>
-  mutate(dAICc = AICc - min(AICc)) |>
-  arrange(dAICc)
-aic_table_leave
-```
-
-and for educating others
-```{r}
-mods_educate <- list(
-  null       = logistf(educate ~ 1, data = perceptions_coex),
-  perception = logistf(educate ~ perception, data = perceptions_coex),
-  workshop   = logistf(educate ~ workshop, data = perceptions_coex),
-  popstatus  = logistf(educate ~ pop.status, data = perceptions_coex),
-  percep2    = logistf(educate ~ perception + I(perception^2), data = perceptions_coex),
-  pop2       = logistf(educate ~ pop.status + I(pop.status^2), data = perceptions_coex),
-  global     = logistf(educate ~ perception + I(perception^2) + workshop + pop.status + I(pop.status^2), data = perceptions_coex)
-)
-
-aic_table_educa <- lapply(mods_educate, AICc_logistf)
-aic_table_educa <- do.call(rbind, aic_table_educa)
-aic_table_educa <- aic_table_educa |>
-  mutate(dAICc = AICc - min(AICc)) |>
-  arrange(dAICc)
-aic_table_educa
-```
-
-The behavior of leaving carcass for the condors is weakly related with any hypothesized predictor. The threshold of $\Delta\text{AICc}≤2$ shows that many models, including a "global", are equal possible. We can see the coefficients for these models, showing the marginal increasing trend with perception.
-
-```{r}
-aic_table_leave
-summary(mods_leave$perception) # marginal increasing trend
-summary(mods_leave$pop2) # no effect
-summary(mods_leave$percep2) # no effect
-summary(mods_leave$global) # none of the variables predict leaving carcasses
-```
-
-In contrast, the probability of educating others about the importance of Andean condor conservation clearly increases for farmers that have attended talks/training workshops on conservation. 
-
-```{r}
-aic_table_educa
-summary(mods_educate$global) # among the variables in global, workshop is the predictor with better relationship
-summary(mods_educate$workshop) # the simplified model for workshop confirm this strong relationship
-```
-Workshop attendance is the dominant predictor of those evaluated. Other predictors add only small improvements (in the global)
-
-We can have data to represent these relationships
-```{r}
-newdat_leave_wor <- data.frame(
-  workshop = seq(min(perceptions_coex$workshop),
-                 max(perceptions_coex$workshop),
-                 length = 100),
-  perception = median(perceptions_coex$perception),
-  pop.status = median(perceptions_coex$pop.status)
-)
-
-newdat_leave_per <- data.frame(
-  workshop = median(perceptions_coex$workshop),
-  perception = seq(min(perceptions_coex$perception),
-                   max(perceptions_coex$perception),
-                   length = 100),
-  pop.status = median(perceptions_coex$pop.status)
-)
-
-newdat_leave_pop <- data.frame(
-  workshop = median(perceptions_coex$workshop),
-  perception = median(perceptions_coex$perception),
-  pop.status = seq(min(perceptions_coex$pop.status),
-                max(perceptions_coex$pop.status),
-                length = 100)
-)
-
-# predictions from models
-pred_leave_workshop <- make_pred_df(mods_leave$global, newdat_leave_wor, "workshop")
-pred_leave_perception <- make_pred_df(mods_leave$perception, newdat_leave_per, "perception")
-pred_leave_pop.status <- make_pred_df(mods_leave$global, newdat_leave_pop, "pop.status")
-
-leave_a <- ggplot(pred_leave_workshop, aes(x = xvar, y = pred)) +
-  geom_ribbon(aes(ymin = pred_low, ymax = pred_high),
-              fill = "steelblue", alpha = 0.15) +
-  geom_line(size = 1.2, color = "steelblue", linetype = "dotted") +
-  geom_point(data = perceptions_coex,
-             aes(x = workshop, y = leave),
-             alpha = 0.2, shape = 21, fill = "steelblue") +
-  scale_y_continuous(limits = c(0,1)) +
-  scale_x_continuous(breaks = c(0,1),
-                     labels = c("0" = "No", "1" = "Yes"))+
-  labs(x = "Have the farmers ever attended a conservation workshop",
-       y = "Probability of leaving carcasses",
-       tag = "d)") +
-  theme_classic()
-leave_a
-
-leave_b <- ggplot(pred_leave_perception, aes(x = xvar, y = pred)) +
-  geom_ribbon(aes(ymin = pred_low, ymax = pred_high),
-              fill = "steelblue", alpha = 0.15) +
-  geom_line(size = 1.2, color = "steelblue", linetype = "dashed") +
-  geom_point(data = perceptions_coex,
-             aes(x = perception, y = leave),
-             alpha = 0.2, shape = 21, fill = "steelblue") +
-  scale_y_continuous(limits = c(0,1)) +
-  scale_x_continuous(breaks = c(0,1,2),
-                     labels = c("0" = "Beneficial", 
-                                "1" = "Harmful",
-                                "2" = "Both"))+
-  labs(x = "Perceibed condor harmfulness",
-       y = "Probability of leaving carcasses",
-       tag = "e)") +
-  theme_classic()
-leave_b
-
-leave_c <- ggplot(pred_leave_pop.status, aes(x = xvar, y = pred)) +
-  geom_ribbon(aes(ymin = pred_low, ymax = pred_high),
-              fill = "steelblue", alpha = 0.15) +
-  geom_line(size = 1.2, color = "steelblue", linetype = "dotted") +
-  geom_point(data = perceptions_coex,
-             aes(x = pop.status, y = leave),
-             alpha = 0.2, shape = 21, fill = "steelblue") +
-  scale_y_continuous(limits = c(0,1)) +
-  scale_x_continuous(breaks = c(0,1,2,3,4),
-                     labels = c("0" = "Decreased a lot", 
-                                "1" = "Decreased",
-                                "2" = "Stable",
-                                "3" = "Increased",
-                                "4" = "Increased a lot"))+
-  labs(x = "Perceibed condor population status",
-       y = "Probability of leaving carcasses",
-       tag = "f)") +
-  theme_classic()
-leave_c
-
-
-pred_educa_workshop <- make_pred_df(mods_educate$workshop, newdat_leave_wor, "workshop")
-pred_educa_perception <- make_pred_df(mods_educate$global, newdat_leave_per, "perception")
-pred_educa_pop.status <- make_pred_df(mods_educate$global, newdat_leave_pop, "pop.status")
-
-educa_a <- ggplot(pred_educa_workshop, aes(x = xvar, y = pred)) +
-  geom_ribbon(aes(ymin = pred_low, ymax = pred_high),
-              fill = "firebrick", alpha = 0.15) +
-  geom_line(size = 1.2, color = "firebrick", linetype = "solid") +
-  geom_point(data = perceptions_coex,
-             aes(x = workshop, y = leave),
-             alpha = 0.2, shape = 21, fill = "firebrick") +
-  scale_y_continuous(limits = c(0,1)) +
-  scale_x_continuous(breaks = c(0,1),
-                     labels = c("0" = "No", "1" = "Yes"))+
-  labs(x = "Have the farmers ever attended a conservation workshop",
-       y = "Probability of educating others",
-       tag = "a)") +
-  theme_classic()
-educa_a
-
-educa_b <- ggplot(pred_educa_perception, aes(x = xvar, y = pred)) +
-  geom_ribbon(aes(ymin = pred_low, ymax = pred_high),
-              fill = "firebrick", alpha = 0.15) +
-  geom_line(size = 1.2, color = "firebrick", linetype = "dotted") +
-  geom_point(data = perceptions_coex,
-             aes(x = perception, y = leave),
-             alpha = 0.2, shape = 21, fill = "firebrick") +
-  scale_y_continuous(limits = c(0,1)) +
-  scale_x_continuous(breaks = c(0,1,2),
-                     labels = c("0" = "Beneficial", 
-                                "1" = "Harmful",
-                                "2" = "Both"))+
-  labs(x = "Perceibed condor harmfulness",
-       y = "Probability of educating others",
-       tag = "b)") +
-  theme_classic()
-educa_b
-
-educa_c <- ggplot(pred_educa_pop.status, aes(x = xvar, y = pred)) +
-  geom_ribbon(aes(ymin = pred_low, ymax = pred_high),
-              fill = "firebrick", alpha = 0.15) +
-  geom_line(size = 1.2, color = "firebrick", linetype = "dotted") +
-  geom_point(data = perceptions_coex,
-             aes(x = pop.status, y = leave),
-             alpha = 0.2, shape = 21, fill = "firebrick") +
-  scale_y_continuous(limits = c(0,1)) +
-  scale_x_continuous(breaks = c(0,1,2,3,4),
-                     labels = c("0" = "Decreased a lot", 
-                                "1" = "Decreased",
-                                "2" = "Stable",
-                                "3" = "Increased",
-                                "4" = "Increased a lot"))+
-  labs(x = "Perceibed condor population status",
-       y = "Probability of educating others",
-       tag = "c)") +
-  theme_classic()
-educa_c
-```
-
-And combining the figure
-```{r}
-(educa_a | educa_b | educa_c) / (leave_a | leave_b | leave_c)
-
-ggsave(filename = "figs/Fig_Aim3_Coexistence.jpg", dpi = 300, 
-       width = 350, height = 160, units = "mm")
-```
-![**Coexistence behavior require conservation action.** Educating others about Andean condor conservation clearly related with attendance to conservation workshops (training and talks). However, there were not clear relationship of the other predictors in this behavior of educating others or the behavior of leaving carcasses for Andean condor (dotted lines). The marginal trend of leaving carcases with perception of harmfulness was an exception.](figs/Fig_Aim3_Coexistence.jpg)
