@@ -1649,7 +1649,7 @@ Combine the figures
 ggsave(filename = "figs/Fig_Aim2_a_b_c_perception.jpg", dpi = 300, 
        width = 360, height = 100, units = "mm")
 ```
-![**Perpection of condors benefits for socio-demographic, farm characteristics, and experiences or attitudes vary little.** The probability of perceived condors as beneficila, harmful, or both varied little across different factors (models selected with AICc), regardless of socio-demographics (a), farm characteristics (b; see log scale, only for visualization purposes), or experiences (c). Variation represents 95% confidence intervals as a measure of uncertainty after 1000 simulation of the parameters.](figs/Fig_Aim2_a_b_c_perception.jpg)
+![**Perception of condors benefits for socio-demographic, farm characteristics, and experiences or attitudes vary little.** The probability of perceived condors as beneficial, harmful, or both varied little across different factors (models selected with AICc), regardless of socio-demographics (a), farm characteristics (b; see log scale, only for visualization purposes), or experiences (c). Variation represents 95% confidence intervals as a measure of uncertainty after 1000 simulation of the parameters.](figs/Fig_Aim2_a_b_c_perception.jpg)
 
 
 
@@ -1910,6 +1910,7 @@ ggsave(filename = "figs/Fig_Aim3_Coexistence.jpg", dpi = 300,
        width = 350, height = 160, units = "mm")
 ```
 ![**Coexistence behavior require conservation action.** Educating others about Andean condor conservation clearly related with attendance to conservation workshops (training and talks). However, there were not clear relationship of the other predictors in this behavior of educating others or the behavior of leaving carcasses for Andean condor (dotted lines). The marginal trend of leaving carcases with perception of harmfulness was an exception.](figs/Fig_Aim3_Coexistence.jpg)
+
 # Field observations of condor attacking livestock (aim 4)
 
 Field observations will reveal little evidence of condor predation on live livestock. As such, perceived impacts are likely to exceed those supported by empirical evidence ([Duriez *et al.* 2019](doi:10.1017/S0959270918000345), [Ballejo *et al.* 2020](https://doi.org/10.1016/j.biocon.2020.108627)).
@@ -2070,6 +2071,7 @@ Now we can include the demographics of the number of condors to see which class 
 ```{r}
 # a list of models with penalized likelihood
 mods_condor_classes <- list(
+  null  = logistf(Interactions_b ~ 1,  data = interactions),
   juvF  = logistf(Interactions_b ~ N_juviCondorsFeme,  data = interactions),
   subF  = logistf(Interactions_b ~ N_subadCondorsFeme, data = interactions),
   adF   = logistf(Interactions_b ~ N_adultCondorsFeme, data = interactions),
