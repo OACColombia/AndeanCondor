@@ -1,6 +1,6 @@
 ---
-title: "Human conflicts over a vulnerable apex top scavenging bird: perceptions on the Andean condor"
-author: "Juan Sebastián Restrepo, Orlando Acevedo-Charry, ..., & Vanessa Hull"
+title: "Conflict and coexistence between farmers and Andean condors"
+author: "Juan Sebastián Restrepo-Cardona, Rubén Pineida, Sebastián Kohn, Orlando Acevedo-Charry, Diego Bamontes, Fabricio Narváez, Paul Monar-Barragán, & Vanessa Hull (elaborated by OAC)"
 date: "`r format(Sys.time(), '%d %B %Y')`"
 output:
   bookdown::html_document2:
