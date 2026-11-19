@@ -1,0 +1,59 @@
+﻿Subject,Paddock site,Gender,Age,Education level,Time of residence,Occupation,Type of livestock,Cattle,Horse,Sheep,Lama,Type of cattle production ,Do you think condors attack living livestock? ,Have you suffered losses of livestock due to attacks by condors?,Have you ever seen condors attacking living livestock?,"If you have suffered the loss of livestock due to attacks by condors in the last 5 years, do you consider these losses acceptable, unacceptable, or negligible?","If you have suffered an attack in the last 5 years, have you reported it to the provincial authority? ",Do you think the response of the authority was positive?                               ,Do you think that the authority's response satisfies the farmers who have suffered an attack? ,Could you indicate if the Andean condor is beneficial and/or harmful to you?,Why is the species harmful?,Why is the species beneficial?,What do you think could be a solution to prevent Andean condors from attacking livestock?,Killing condors is necessary to prevent further damage?,Do you know of any poaching events in which someone has killed any condor in the last 5 years? ,And how many poaching events are you aware of in the last 5 years? ,Do you consider that the Andean condor population in this area?,What are your feelings towards Andean condors?,What would you feel if all of the condors disappeared forever from the region?,Would you like the Andean condor population in the National Park and the surrounding area to?,"Does the Andean condor have intrinsic value, even if this animal doesn't generate any income for you?",Do you leave livestock carcasses in the field to be consumed by condors? ,Do you educate others about the importance of Andean condor conservation?,Have you attended talks/trainings on the environment? ,Have you attended talks/trainings on the Andean condor? ,Do you think the Andean condor is important to people?,Would you be willing to support the protection of the Andean condor on your farm?
+1,0,0,40,2,22,0,5,400,300,600,NA,3,3,0,0,0,1,NA,NA,2,Livestock predation,Scavenging,1,4,1,NA,1,4,3,3,3,0,0,1,1,0,0
+2,0,0,48,1,20,0,5,300,100,300,NA,4,1,1,1,NA, ,NA,NA,2,Livestock predation,National emblem,2,3,1,NA,2,1,1,4,1,0,1,1,1,0,0
+3,0,0,60,1,2,0,2,60,10,NA,NA,1,1,1,1,NA,NA,NA,NA,0,Livestock predation,NA,0,0,1,NA,3,2,3,3,1,1,1,1,1,0,0
+4,0,0,56,2,56,0,2,25,19,NA,NA,4,3,1,1,NA,NA,NA,NA,2,Livestock predation,"Scavenging, tourist attraction",1,3,1,NA,4,0,0,4,0,0,0,1,1,0,0
+5,0,0,43,1,43,1,2,40,10,NA,NA,5,3,0,1,2,1,NA,NA,0,Livestock predation,NA,1,3,1,NA,3,1,3,3,1,0,0,1,1,0,0
+6,0,1,48,2,20,0,2,25,6,NA,NA,4,3,0,1,1,1,NA,NA,2,Livestock predation,"Local emblem, tourist attraction",1,3,0,1,3,1,3,3,1,1,1,1,1,0,0
+7,0,1,63,1,4,1,0,5,NA,NA,NA,1,2,1,1,NA,NA,NA,NA,0,Livestock predation,NA,0,0,1,NA,2,0,4,3,1,0,1,1,1,0,0
+8,0,0,25,2,1,0,2,200,10,NA,NA,1,0,1,1,NA,NA,NA,NA,1,NA,"Scavenging, spiritual importance",1,3,1,NA,3,1,4,3,1,0,0,1,1,0,0
+9,0,0,80,0,80,1,4,9,1,NA,4,1,2,0,1,0,0,1,1,2,Livestock predation,National emblem,1,2,1,NA,3,1,1,2,3,0,1,0,1,0,1
+10,0,1,44,1,44,1,0,10,NA,NA,NA,1,1,1,1,NA,NA,NA,NA,2,Livestock predation,Tourist attraction,1,3,1,NA,3,0,3,3,1,0,1,1,1,0,0
+11,0,0,50,2,50,1,2,20,10,NA,NA,4,2,0,1,0,1,NA,NA,2,Livestock predation,Tourist attraction,1,3,1,NA,3,0,4,2,1,0,0,0,1,0,0
+12,0,0,23,3,23,0,2,50,15,NA,NA,1,2,0,0,0,1,NA,NA,2,Livestock predation,National emblem,1,3,1,NA,3,0,3,3,0,0,0,0,0,0,0
+13,0,0,62,1,62,1,2,50,15,NA,NA,1,2,0,1,1,1,NA,NA,2,Livestock predation,"Tourist attraction, national emblem",1,3,1,NA,3,1,3,3,1,0,0,0,0,0,0
+14,0,0,65,2,65,1,3,150,3,1,NA,5,3,0,1,1,1,NA,NA,0,Livestock predation,NA,2,3,1,NA,2,1,3,2,1,0,1,1,1,0,1
+15,0,1,48,2,48,1,0,127,NA,NA,NA,4,3,0,1,2,1,NA,NA,0,Livestock predation,NA,1,0,1,NA,4,1,3,3,2,0,1,1,1,0,0
+16,0,0,56,1,52,1,6,75,15,13,9,4,1,1,1,NA,NA,NA,NA,2,Livestock predation,National emblem,1,3,1,NA,2,0,4,2,1,1,0,0,1,0,0
+17,0,0,55,1,55,1,2,6,1,NA,NA,1,0,1,1,NA,NA,NA,NA,1,NA,Tourist attraction,2,3,1,NA,1,1,3,3,1,1,0,0,0,0,0
+18,0,1,59,2,38,1,0,38,NA,NA,NA,4,1,1,1,NA,NA,NA,NA,2,Livestock predation,Scavenging,1,3,1,NA,1,0,4,3,1,1,0,1,1,0,0
+19,0,0,65,1,65,1,2,30,8,NA,NA,4,1,0,0,1,0,1,1,2,Livestock predation,National emblem,0,3,0,1,3,1,4,3,1,0,0,1,1,0,0
+20,0,0,36,2,5,1,2,10,4,NA,NA,4,0,1,1,NA,NA,NA,NA,1,NA,"Scavenging, tourist attraction",1,3,1,NA,4,1,3,4,1,1,1,1,1,0,0
+21,0,0,29,2,2,0,5,30,NA,NA,5,1,0,1,1,NA,NA,NA,NA,1,NA,National emblem,1,3,1,NA,3,1,3,3,1,1,1,1,1,0,0
+22,0,0,64,1,64,1,2,23,4,NA,NA,4,2,0,0,0,0,1,1,2,Livestock predation,National emblem,1,3,1,NA,2,1,3,3,1,0,0,1,1,0,0
+23,0,0,38,2,38,1,2,40,8,NA,NA,4,1,1,1,NA,NA,NA,NA,2,Livestock predation,National emblem,1,3,1,NA,1,2,2,3,1,0,1,0,1,0,0
+24,0,0,78,1,38,1,0,7,NA,NA,NA,4,1,0,1,1,1,NA,NA,0,Livestock predation,National emblem,1,3,1,NA,1,2,2,2,2,1,1,1,1,0,0
+25,0,1,47,2,47,1,0,13,NA,NA,NA,4,3,0,1,1,1,NA,NA,2,Livestock predation,"Tourist attraction, national emblem",1,3,1,NA,3,1,3,2,1,0,0,0,0,0,0
+26,0,0,37,3,37,1,2,5,8,NA,NA,4,1,1,1,NA,NA,NA,NA,2,Livestock predation,Scavenging,1,3,1,NA,2,0,3,3,0,0,0,0,1,0,0
+27,0,0,68,1,68,1,2,40,15,NA,NA,1,2,0,0,0,0,1,1,2,Livestock predation,National emblem,1,3,1,NA,3,0,3,3,1,0,0,1,1,0,0
+28,0,1,58,1,58,0,2,10,2,NA,NA,4,1,1,1,NA,NA,NA,NA,2,Livestock predation,National emblem,1,3,1,NA,3,1,2,1,3,1,1,1,1,0,1
+29,0,0,73,1,73,1,3,15,2,1,NA,1,1,0,1,0,0,1,1,2,Livestock predation,National emblem,1,3,1,NA,3,0,3,2,2,1,0,0,1,0,1
+30,0,1,60,2,40,0,3,15,2,1,NA,4,2,0,1,1,1,NA,NA,2,Livestock predation,National emblem,1,3,1,NA,1,2,2,2,2,0,1,1,1,0,0
+31,0,1,54,0,18,0,0,3,NA,NA,NA,1,0,1,1,NA,NA,NA,NA,1,NA,Tourist attraction,1,3,1,NA,3,2,2,2,1,1,1,1,1,0,1
+32,0,0,76,1,76,0,1,NA,4,NA,NA,1,0,1,1,0,1,NA,NA,1,NA,"National emblem, tourist attraction",1,3,1,NA,2,0,3,4,2,0,0,1,1,0,0
+33,0,0,27,3,27,1,0,10,NA,NA,NA,1,2,0,0,0,1,NA,NA,2,Livestock predation,Scavenging,1,3,1,NA,0,0,4,3,1,1,0,1,1,1,0
+34,0,0,55,1,30,1,0,20,NA,NA,NA,4,0,1,1,NA,NA,NA,NA,1,NA,NA,1,3,1,NA,0,1,3,3,0,1,1,0,1,2,0
+35,0,1,70,1,70,0,3,200,20,500,NA,4,2,1,1,NA,NA,NA,NA,2,Livestock predation,National emblem,1,3,1,NA,3,1,3,3,1,0,1,1,1,0,0
+36,0,0,78,1,10,1,2,12,12,NA,NA,1,1,1,1,NA,NA,NA,NA,2,Livestock predation,Recreation,2,3,1,NA,1,1,3,3,0,1,1,1,1,0,0
+37,0,0,73,1,33,1,0,15,NA,NA,NA,4,0,1,1,NA,NA,NA,NA,1,NA,Recreation,2,2,1,NA,1,0,4,3,0,1,0,1,1,0,0
+38,0,0,18,1,18,0,3,20,6,2,NA,2,2,1,1,NA,NA,NA,NA,0,Livestock predation,NA,1,3,1,NA,1,1,4,2,1,0,1,1,1,2,0
+39,0,0,44,1,44,1,0,6,NA,NA,NA,4,2,1,1,NA,NA,NA,NA,2,Livestock predation,Recreation,1,3,1,NA,2,1,3,2,1,1,1,1,1,0,0
+40,0,0,20,3,20,0,0,50,NA,NA,NA,0,2,0,1,2,1,NA,NA,2,Livestock predation,Local emblem,2,3,1,NA,2,1,3,2,1,0,1,1,1,0,0
+41,0,0,47,2,10,1,0,15,NA,NA,NA,0,2,0,0,0,1,NA,NA,2,Livestock predation,Local emblem,1,3,1,NA,3,2,3,2,1,1,0,0,1,0,0
+42,0,0,40,1,40,0,2,5,3,NA,NA,2,3,0,0,1,1,NA,NA,0,Livestock predation,NA,1,3,1,NA,3,1,2,2,1,1,1,1,1,1,0
+43,1,0,30,4,30,1,6,70,5,2,3,5,3,0,1,0,1,NA,NA,2,Livestock predation,Scavenging,1,3,0,1,3,0,3,3,1,1,1,0,0,0,0
+44,1,0,60,0,60,1,2,5,2,NA,NA,1,0,1,1,NA,NA,NA,NA,0,Livestock predation,NA,2,2,1,NA,3,3,2,2,3,1,1,1,1,1,1
+45,1,0,31,1,6,1,6,10,2,2,4,1,1,1,1,NA,NA,NA,NA,2,Livestock predation,Recreation,1,4,1,NA,3,0,3,3,3,1,0,1,1,0,0
+46,1,0,52,1,32,1,4,10,2,NA,4,1,1,1,1,NA,NA,NA,NA,0,Livestock predation,National emblem,1,3,1,NA,2,0,3,3,0,1,0,1,1,0,0
+47,1,0,30,2,30,0,3,50,4,4,NA,1,3,1,1,NA,NA,NA,NA,0,Livestock predation,NA,0,0,1,NA,4,0,4,2,1,1,1,1,1,2,0
+48,1,0,30,4,30,1,4,35,6,NA,2,1,1,0,0,1,1,NA,NA,0,Livestock predation,NA,1,4,1,NA,0,0,4,3,2,1,1,1,1,1,0
+49,1,0,66,1,66,0,4,100,3,NA,2,5,1,0,1,0,1,NA,NA,0,Livestock predation,National emblem,1,4,1,NA,1,1,3,3,1,0,0,0,1,0,0
+50,1,0,52,2,52,1,4,15,3,NA,5,1,1,1,1,NA,NA,NA,NA,2,Livestock predation,"Scavenging, national emblem",1,4,1,NA,3,4,3,3,0,1,0,0,1,0,0
+51,1,0,62,1,60,0,6,15,1,6,2,1,1,1,1,NA,NA,NA,NA,2,Livestock predation,Recreation,0,0,1,NA,3,1,3,3,2,1,1,1,1,0,0
+52,1,0,64,1,18,1,0,9,NA,NA,NA,4,1,1,1,NA,NA,NA,NA,2,Livestock predation,To want future generations to enjoy,1,4,1,NA,1,1,3,3,1,1,0,0,1,1,0
+53,1,0,45,2,45,1,4,16,1,NA,1,1,3,1,1,NA,NA,NA,NA,2,Livestock predation,"National emblem, recreation",1,4,1,NA,3,0,4,3,0,1,0,0,0,0,0
+54,1,1,55,1,55,1,0,7,NA,NA,NA,1,3,1,1,NA,NA,NA,NA,0,"Livestock predation, bad luck",NA,2,2,1,NA,2,2,2,1,3,1,1,1,1,1,1
+55,1,0,53,1,53,1,0,37,NA,NA,NA,3,1,0,0,2,1,NA,NA,0,Livestock predation,NA,1,0,1,NA,2,1,3,3,1,0,0,0,1,2,0
+56,1,1,27,1,27,1,0,16,NA,NA,NA,1,1,1,1,NA,NA,NA,NA,0,Livestock predation,NA,1,4,1,NA,2,1,2,2,1,1,1,1,1,2,0
+57,1,1,55,1,5,1,0,4,NA,NA,NA,1,0,1,1,NA,NA,NA,NA,1,NA,Scavenging,1,0,1,NA,2,0,4,4,0,1,0,1,1,0,0
+58,1,0,33,1,33,1,0,9,NA,NA,NA,4,0,1,1,NA,NA,NA,NA,1,NA,Scavenging,2,2,1,NA,3,0,3,2,1,1,1,1,1,2,0
