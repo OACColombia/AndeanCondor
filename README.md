@@ -1,6 +1,6 @@
 # Andean Condor perception
 
-This is the repository of the analyzes of the manuscript in preparation "Perceived human conflict over a vulnerable apex top scavenging bird", by Juan Sebastián Restrepo, Orlando Acevedo-Charry, et al., & Vanessa Hull. This paper aims to understand human-vulture perception of conflict regarding the role of the Andean Condor (*Vultur gryphus*) as a potential predator. The specific aims were: 
+This is the repository of the analyzes of the manuscript in preparation "Conflict and coexistence between people and the world's largest scavenger bird", by Juan Sebastián Restrepo, Orlando Acevedo-Charry, Rubén Pineida, Sebastián Kohn, Diego Bamontes, Fabricio Narváez, Paul Monar-Barragán, & Vanessa Hull. This paper aims to understand human-vulture perception of conflict regarding the role of the Andean Condor (*Vultur gryphus*) as a potential predator. The specific aims were: 
 
 * To examine local perceptions of the negative impacts of condors as potential predator of livestock, and analyze how these perceptions relate to socio-demographic and psychological factors, livestock management practices, and experience or attitude by farmers.
 
